@@ -1,4 +1,4 @@
-# bot.py - ValueEdge Telegram Bot MIT ANALYSIS
+# bot.py - ValueEdge Bot FÜR ALLE SPORTARTEN
 import os
 import requests
 import logging
@@ -52,25 +52,27 @@ def get_backend(endpoint, timeout=30):
 # =====================================================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "🤖 *ValueEdge Bot - ERWEITERTE FILTER*\n\n"
+        "🤖 *ValueEdge Bot - MULTI-SPORT SCANNER*\n\n"
+        "🏀 *Basketball:* NBA, Euroleague\n"
+        "🏒 *Eishockey:* NHL, Swedish Hockey\n"
+        "🎾 *Tennis:* ATP Australian Open\n"
+        "⚽ *Fußball:* (Winterpause)\n\n"
         "✅ /start - Diese Hilfe\n"
-        "✅ /scan - Scan starten\n"
+        "✅ /scan - Multi-Sport Scan\n"
         "✅ /bets - Value Bets anzeigen\n"
-        "✅ /analysis - Detaillierte Analyse\n"
-        "✅ /leagues - Alle Ligen\n"
+        "✅ /sports - Alle Sportarten\n"
         "✅ /stats - System Status\n"
-        "✅ /top - Top 5 Value Bets\n"
-        "✅ /country <land> - Value Bets nach Land\n\n"
-        "🎯 *Erweiterter Filter:* Quote 1.40-5.0, Edge≥1.0%\n"
-        "⚡ *Mehr Value Bets als je zuvor!*",
+        "✅ /analysis - Detaillierte Analyse\n"
+        "✅ /sport <name> - Value Bets nach Sportart\n\n"
+        "🎯 *Winter-Proof! Keine Winterpause mehr!*",
         parse_mode='Markdown'
     )
 
 async def scan(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = await update.message.reply_text(
-        "⚽ *Scan startet mit erweiterten Filtern...*\n"
-        "Scanne 28 Ligen...\n"
-        "Filter: Quote 1.40-5.0, Edge≥1.0%",
+        "🏀🏒🎾 *Multi-Sport Scan startet...*\n"
+        "Scanne aktive Sportarten (keine Winterpause!)\n"
+        "NBA, NHL, Tennis & mehr...",
         parse_mode='Markdown'
     )
     
@@ -86,43 +88,45 @@ async def scan(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     bets = result.get('total_value_bets', 0)
     duration = result.get('duration_seconds', 0)
-    leagues_scanned = result.get('leagues_scanned', 0)
-    leagues_with_bets = result.get('leagues_with_bets', 0)
+    sports_scanned = result.get('sports_scanned', 0)
+    sports_with_bets = result.get('sports_with_bets', 0)
+    bets_by_sport = result.get('bets_by_sport', {})
     
     if bets > 0:
-        leagues_list = result.get('results_summary', {}).get('leagues_with_bets', [])
-        leagues_text = "\n".join([f"• {l}" for l in leagues_list[:3]])
+        # Liste der erfolgreichen Sportarten
+        sports_text = ""
+        for sport, count in bets_by_sport.items():
+            emoji = get_sport_emoji(sport)
+            sports_text += f"{emoji} {sport}: {count} Bets\n"
         
         await msg.edit_text(
-            f"🎉 *SCAN ERFOLGREICH!*\n\n"
-            f"⚽ Gescannt: {leagues_scanned} Ligen\n"
+            f"🎉 *MULTI-SPORT SCAN ERFOLGREICH!*\n\n"
+            f"🏆 Gescannte Sportarten: {sports_scanned}\n"
             f"✅ Value Bets gefunden: {bets}\n"
-            f"🏆 Ligen mit Bets: {leagues_with_bets}\n"
+            f"🎯 Sportarten mit Bets: {sports_with_bets}\n"
             f"⏱️ Dauer: {duration:.1f}s\n\n"
-            f"🎯 *Erfolgreiche Ligen:*\n"
-            f"{leagues_text}\n\n"
-            f"🎯 Filter: Quote 1.40-5.0, Edge≥1.0%\n\n"
+            f"📊 *Value Bets pro Sportart:*\n"
+            f"{sports_text}\n"
             f"Tippe /bets zum Anzeigen! 🚀",
             parse_mode='Markdown'
         )
     else:
-        leagues_list = result.get('results_summary', {}).get('leagues_no_bets', [])
-        leagues_text = "\n".join([f"• {l}" for l in leagues_list[:5]])
+        sports_list = result.get('results_summary', {}).get('sports_no_bets', [])
+        sports_text = "\n".join([f"• {s}" for s in sports_list[:5]])
         
         await msg.edit_text(
             f"✅ *Scan abgeschlossen*\n\n"
-            f"⚽ Gescannt: {leagues_scanned} Ligen\n"
+            f"🏆 Gescannte Sportarten: {sports_scanned}\n"
             f"🔍 Value Bets: 0\n"
             f"⏱️ Dauer: {duration:.1f}s\n\n"
-            f"🎯 Filter: Quote 1.40-5.0, Edge≥1.0%\n\n"
             f"*Keine Value Bets heute in:*\n"
-            f"{leagues_text}\n\n"
+            f"{sports_text}\n\n"
             f"💡 Tipp: Probier /analysis für Details",
             parse_mode='Markdown'
         )
 
 async def bets(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    result = get_backend("/feed?limit=15")
+    result = get_backend("/feed?limit=15&min_edge=1.0")
     
     if not result or 'error' in result:
         await update.message.reply_text("📭 Keine Value Bets verfügbar")
@@ -132,31 +136,24 @@ async def bets(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not bets_list:
         await update.message.reply_text(
             "📭 Keine Value Bets in Datenbank.\n"
-            "🎯 Filter: Quote 1.40-5.0, Edge≥1.0%\n"
-            "💡 Tippe /scan für neuen Scan!",
+            "🏀🏒🎾 Tippe /scan für Multi-Sport Scan!",
             parse_mode='Markdown'
         )
         return
     
     bets_sorted = sorted(bets_list, key=lambda x: x.get('edge', 0), reverse=True)
     
-    message = f"🎯 *Top {len(bets_sorted)} Value Bets:*\n"
-    message += "🎯 Filter: Quote 1.40-5.0, Edge≥1.0%\n\n"
+    message = f"🎯 *Top {len(bets_sorted)} Value Bets:*\n\n"
     
     for i, bet in enumerate(bets_sorted[:15], 1):
         match = bet.get('match', 'N/A')
         edge = bet.get('edge', 0)
         pick = bet.get('pick', '')
+        odds = bet.get('odds', bet.get('odds_home', 0))
+        sport_name = bet.get('sport_name', 'Unbekannt')
+        sport_type = bet.get('sport_type', 'unknown')
         
-        if pick == "HOME":
-            odds = bet.get('odds_home', 0)
-        elif pick == "AWAY":
-            odds = bet.get('odds_away', 0)
-        else:
-            odds = bet.get('odds_draw', 0)
-        
-        league = bet.get('league', 'Unbekannt')
-        country_emoji = get_country_emoji(league)
+        sport_emoji = get_sport_emoji(sport_name)
         
         if edge > 5:
             edge_emoji = "🔥"
@@ -166,18 +163,85 @@ async def bets(update: Update, context: ContextTypes.DEFAULT_TYPE):
             edge_emoji = "📈"
         
         message += (
-            f"{i}. {country_emoji} *{match}*\n"
+            f"{i}. {sport_emoji} *{match}*\n"
             f"   {edge_emoji} {pick} @ {odds:.2f}\n"
             f"   Edge: +{edge:.1f}%\n"
-            f"   🏆 {get_league_name(league)}\n\n"
+            f"   🏆 {sport_name} ({sport_type})\n\n"
         )
     
     await update.message.reply_text(message, parse_mode='Markdown')
 
-async def analysis(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    msg = await update.message.reply_text("📊 Analysiere Daten...")
+async def sports(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    result = get_backend("/sports")
     
-    result = get_backend("/stats/advanced")
+    if not result or 'error' in result:
+        await update.message.reply_text("❌ Kann Sportarten nicht laden")
+        return
+    
+    sports_list = result.get('sports', [])
+    active_sports = [s for s in sports_list if s.get('active')]
+    inactive_sports = [s for s in sports_list if not s.get('active')]
+    
+    message = "🏀🏒🎾 *ALLE SPORTARTEN:*\n\n"
+    
+    message += f"✅ *AKTIVE SPORTARTEN ({len(active_sports)}):*\n"
+    for sport in active_sports:
+        emoji = get_sport_emoji(sport['name'])
+        message += f"{emoji} {sport['name']} ({sport['sport']})\n"
+        message += f"   • Land: {sport['country']}\n"
+        message += f"   • Priority: {sport['priority']}\n"
+        message += f"   • Outcomes: {', '.join(sport['outcomes'])}\n\n"
+    
+    if inactive_sports:
+        message += f"⏸️ *INAKTIVE SPORTARTEN ({len(inactive_sports)}):*\n"
+        for sport in inactive_sports[:5]:  # Nur erste 5 zeigen
+            emoji = get_sport_emoji(sport['name'])
+            message += f"{emoji} {sport['name']} (Winterpause)\n"
+    
+    await update.message.reply_text(message, parse_mode='Markdown')
+
+async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    result = get_backend("/health")
+    
+    if not result:
+        await update.message.reply_text("❌ Backend nicht erreichbar")
+        return
+    
+    multi_stats = get_backend("/stats/multi")
+    
+    total_bets = result.get('total_value_bets_in_db', 0)
+    active_sports = result.get('active_sports', 0)
+    sports_list = result.get('sports_list', [])
+    
+    sports_text = ""
+    if multi_stats and 'top_sports' in multi_stats:
+        top_sports = multi_stats['top_sports']
+        if top_sports:
+            sports_text = f"\n🏆 *Top Sportart:* {top_sports[0].get('sport', 'N/A')} ({top_sports[0].get('count', 0)} Bets)"
+    
+    message = (
+        f"📊 *MULTI-SPORT SCANNER STATUS*\n\n"
+        f"• Datenbank: {result.get('database', '❓')}\n"
+        f"• Odds API: {result.get('odds_api', '❓')}\n"
+        f"• Aktive Sportarten: {active_sports}\n"
+        f"• Value Bets in DB: {total_bets}\n"
+        f"{sports_text}\n"
+        f"• Zeit: {result.get('timestamp', '')[:19]}\n\n"
+        f"✅ *Aktive Sportarten:*\n"
+    )
+    
+    for sport in sports_list[:5]:  # Nur erste 5 zeigen
+        message += f"  • {sport}\n"
+    
+    if len(sports_list) > 5:
+        message += f"  • ... und {len(sports_list) - 5} weitere\n"
+    
+    await update.message.reply_text(message, parse_mode='Markdown')
+
+async def analysis(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = await update.message.reply_text("📊 Analysiere Multi-Sport Daten...")
+    
+    result = get_backend("/stats/multi")
     
     if not result or 'error' in result:
         await msg.edit_text("❌ Kann Analyse nicht laden")
@@ -190,195 +254,118 @@ async def analysis(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     avg_edge = result.get('average_edge', 0)
-    top_leagues = result.get('top_5_leagues', [])
-    edge_dist = result.get('edge_distribution', {})
-    pick_dist = result.get('pick_distribution', {})
+    top_sports = result.get('top_sports', [])
+    sport_stats = result.get('sport_statistics', {})
+    active_sports = result.get('active_sports_today', [])
     
-    message = "📊 *DETAILLIERTE VALUE BET ANALYSE*\n\n"
+    message = "📊 *MULTI-SPORT ANALYSE*\n\n"
     message += f"• Gesamt Value Bets: {total_bets}\n"
-    message += f"• Durchschnitt Edge: {avg_edge:.1f}%\n\n"
+    message += f"• Durchschnitt Edge: {avg_edge:.1f}%\n"
+    message += f"• Aktive Sportarten heute: {len(active_sports)}\n\n"
     
-    message += "🏆 *TOP LIGEN:*\n"
-    for league in top_leagues[:3]:
-        name = league.get('name', league.get('league', 'Unknown'))
-        count = league.get('count', 0)
-        message += f"  • {name}: {count} Value Bets\n"
+    message += "🏆 *TOP SPORTARTEN NACH VALUE BETS:*\n"
+    for sport in top_sports[:3]:
+        sport_name = sport.get('sport', 'Unknown')
+        count = sport.get('count', 0)
+        avg = sport.get('avg_edge', 0)
+        sport_type = sport.get('type', 'unknown')
+        emoji = get_sport_emoji(sport_name)
+        
+        message += f"  {emoji} {sport_name} ({sport_type}): {count} Bets (Ø{avg:.1f}%)\n"
     
-    message += f"\n📈 *EDGE-VERTEILUNG:*\n"
-    message += f"  • Hoch (>5%): {edge_dist.get('high', 0)}\n"
-    message += f"  • Mittel (2-5%): {edge_dist.get('medium', 0)}\n"
-    message += f"  • Niedrig (<2%): {edge_dist.get('low', 0)}\n"
+    # Edge-Verteilung
+    high_edges = 0
+    medium_edges = 0
+    low_edges = 0
     
-    message += f"\n🎯 *PICK-VERTEILUNG:*\n"
-    message += f"  • HOME: {pick_dist.get('HOME', 0)}\n"
-    message += f"  • AWAY: {pick_dist.get('AWAY', 0)}\n"
-    message += f"  • DRAW: {pick_dist.get('DRAW', 0)}\n\n"
+    for sport, stats in sport_stats.items():
+        count = stats.get('count', 0)
+        avg_edge = stats.get('avg_edge', 0)
+        
+        if avg_edge > 5:
+            high_edges += 1
+        elif avg_edge >= 2:
+            medium_edges += 1
+        else:
+            low_edges += 1
     
-    if edge_dist.get('high', 0) > 0:
-        message += "🔥 *EMPFEHLUNG:* Exzellente Value Bets vorhanden!"
-    elif edge_dist.get('medium', 0) > 0:
+    message += f"\n📈 *EDGE-VERTEILUNG (pro Sportart):*\n"
+    message += f"  • Hoch (>5%): {high_edges} Sportarten\n"
+    message += f"  • Mittel (2-5%): {medium_edges} Sportarten\n"
+    message += f"  • Niedrig (<2%): {low_edges} Sportarten\n\n"
+    
+    # Empfehlung
+    if high_edges > 0:
+        message += "🔥 *EMPFEHLUNG:* Exzellente Value Bets in mehreren Sportarten!"
+    elif medium_edges > 0:
         message += "⚡ *EMPFEHLUNG:* Gute Value Bets verfügbar"
     else:
-        message += "💡 *EMPFEHLUNG:* Mehr Scans durchführen"
+        message += "💡 *EMPFEHLUNG:* Mehr Sportarten aktivieren"
     
-    message += "\n\n🎯 Filter: Quote 1.40-5.0, Edge≥1.0%"
+    message += "\n\n🎯 *Aktive Sportarten:* " + ", ".join(active_sports[:5])
     
     await msg.edit_text(message, parse_mode='Markdown')
 
-async def leagues(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    result = get_backend("/health")
-    
-    if not result or 'error' in result:
-        await update.message.reply_text("❌ Kann Ligen-Info nicht laden")
-        return
-    
-    total_leagues = result.get('total_leagues', 0)
-    
-    message = f"⚽ *{total_leagues} FUSSBALLLIGEN KONFIGURIERT:*\n\n"
-    
-    # Top 10 Ligen auflisten
-    top_leagues = [
-        "🏴󠁧󠁢󠁥󠁮󠁧󠁿 Premier League (England)",
-        "🇮🇹 Serie A (Italy)",
-        "🇪🇸 La Liga (Spain)",
-        "🇩🇪 Bundesliga (Germany)",
-        "🇫🇷 Ligue 1 (France)",
-        "🇳🇱 Eredivisie (Netherlands)",
-        "🇵🇹 Primeira Liga (Portugal)",
-        "🇧🇪 Belgium Pro League",
-        "🇹🇷 Süper Lig (Turkey)",
-        "🏴󠁧󠁢󠁥󠁮󠁧󠁿 Championship (England)"
-    ]
-    
-    for league in top_leagues:
-        message += f"• {league}\n"
-    
-    message += f"\n... und {total_leagues - 10} weitere Ligen\n\n"
-    message += "🎯 Filter: Quote 1.40-5.0, Edge≥1.0%"
-    
-    await update.message.reply_text(message, parse_mode='Markdown')
-
-async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    result = get_backend("/health")
-    
-    if not result:
-        await update.message.reply_text("❌ Backend nicht erreichbar")
-        return
-    
-    total_bets = result.get('total_value_bets_in_db', 0)
-    total_leagues = result.get('total_leagues', 0)
-    filter_info = result.get('filter', 'Unknown')
-    
-    message = (
-        f"📊 *SYSTEM STATUS - ERWEITERTE FILTER*\n\n"
-        f"• Datenbank: {result.get('database', '❓')}\n"
-        f"• Odds API: {result.get('odds_api', '❓')}\n"
-        f"• Konfig. Ligen: {total_leagues}\n"
-        f"• Value Bets in DB: {total_bets}\n"
-        f"• Filter: {filter_info}\n"
-        f"• Zeit: {result.get('timestamp', '')[:19]}\n\n"
-        f"🔗 {BACKEND_URL}"
-    )
-    
-    await update.message.reply_text(message, parse_mode='Markdown')
-
-async def top(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    result = get_backend("/feed?limit=5")
-    
-    if not result or 'error' in result:
-        await update.message.reply_text("📭 Keine Value Bets verfügbar")
-        return
-    
-    bets_list = result.get('bets', [])
-    if not bets_list:
-        await update.message.reply_text("📭 Datenbank ist leer")
-        return
-    
-    bets_sorted = sorted(bets_list, key=lambda x: x.get('edge', 0), reverse=True)
-    
-    message = "🏆 *TOP 5 VALUE BETS (höchster Edge):*\n\n"
-    
-    for i, bet in enumerate(bets_sorted[:5], 1):
-        match = bet.get('match', 'N/A')
-        edge = bet.get('edge', 0)
-        pick = bet.get('pick', '')
-        
-        if pick == "HOME":
-            odds = bet.get('odds_home', 0)
-        elif pick == "AWAY":
-            odds = bet.get('odds_away', 0)
-        else:
-            odds = bet.get('odds_draw', 0)
-        
-        league = bet.get('league', 'Unbekannt')
-        country_emoji = get_country_emoji(league)
-        
-        message += (
-            f"{i}. {country_emoji} *{match}*\n"
-            f"   ⚡ {pick} @ {odds:.2f}\n"
-            f"   📈 Edge: +{edge:.1f}%\n"
-            f"   🏆 {get_league_name(league)}\n\n"
-        )
-    
-    message += "🎯 Filter: Quote 1.40-5.0, Edge≥1.0%"
-    
-    await update.message.reply_text(message, parse_mode='Markdown')
-
-async def country(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def sport_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_text(
-            "🌍 *Verwendung:* /country <Land>\n\n"
+            "🏀 *Verwendung:* /sport <Sportart>\n\n"
             "Beispiele:\n"
-            "/country Germany\n"
-            "/country Spain\n"
-            "/country England\n\n"
-            "🎯 Filter: Quote 1.40-5.0, Edge≥1.0%",
+            "/sport NBA\n"
+            "/sport NHL\n"
+            "/sport Euroleague\n\n"
+            "🏒 Tippe /sports für alle verfügbaren Sportarten",
             parse_mode='Markdown'
         )
         return
     
-    country_name = ' '.join(context.args).title()
+    sport_name = ' '.join(context.args).upper()
     
-    result = get_backend("/feed?limit=100")
-    
-    if not result or 'error' in result:
-        await update.message.reply_text("📭 Keine Value Bets verfügbar")
+    # Hole alle Sportarten zuerst
+    sports_result = get_backend("/sports")
+    if not sports_result:
+        await update.message.reply_text("❌ Kann Sportarten nicht laden")
         return
     
-    bets_list = result.get('bets', [])
-    if not bets_list:
-        await update.message.reply_text("📭 Datenbank ist leer")
+    # Finde passende Sportarten
+    matching_sports = []
+    for sport in sports_result.get('sports', []):
+        if sport_name.lower() in sport.get('name', '').lower():
+            matching_sports.append(sport.get('key'))
+    
+    if not matching_sports:
+        await update.message.reply_text(f"❌ Keine Sportart gefunden für '{sport_name}'")
         return
     
-    country_bets = []
-    for bet in bets_list:
-        league = bet.get('league', '')
-        league_country = get_country_by_league(league)
-        if league_country and country_name.lower() in league_country.lower():
-            country_bets.append(bet)
+    # Value Bets für diese Sportarten holen
+    all_bets = []
+    for sport_key in matching_sports:
+        result = get_backend(f"/feed?sport={sport_key}&limit=20")
+        if result and 'bets' in result:
+            all_bets.extend(result['bets'])
     
-    if not country_bets:
+    if not all_bets:
         await update.message.reply_text(
-            f"📭 Keine Value Bets für {country_name}\n\n"
-            f"🎯 Filter: Quote 1.40-5.0, Edge≥1.0%",
+            f"📭 Keine Value Bets für {sport_name}\n\n"
+            f"💡 Tippe /scan für neuen Multi-Sport Scan",
             parse_mode='Markdown'
         )
         return
     
-    country_emoji = get_country_emoji_by_name(country_name)
-    message = f"{country_emoji} *VALUE BETS FÜR {country_name.upper()}:*\n\n"
+    # Nach Edge sortieren
+    sorted_bets = sorted(all_bets, key=lambda x: x.get('edge', 0), reverse=True)
+    sport_info = next((s for s in sports_result.get('sports', []) if s.get('key') == matching_sports[0]), {})
     
-    for i, bet in enumerate(country_bets[:10], 1):
+    sport_display_name = sport_info.get('name', sport_name)
+    sport_emoji = get_sport_emoji(sport_display_name)
+    
+    message = f"{sport_emoji} *VALUE BETS FÜR {sport_display_name.upper()}:*\n\n"
+    
+    for i, bet in enumerate(sorted_bets[:10], 1):
         match = bet.get('match', 'N/A')
         edge = bet.get('edge', 0)
         pick = bet.get('pick', '')
-        
-        if pick == "HOME":
-            odds = bet.get('odds_home', 0)
-        elif pick == "AWAY":
-            odds = bet.get('odds_away', 0)
-        else:
-            odds = bet.get('odds_draw', 0)
+        odds = bet.get('odds', 0)
         
         message += (
             f"{i}. *{match}*\n"
@@ -386,157 +373,42 @@ async def country(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"   📈 Edge: +{edge:.1f}%\n\n"
         )
     
-    message += f"🎯 Filter: Quote 1.40-5.0, Edge≥1.0%"
-    
     await update.message.reply_text(message, parse_mode='Markdown')
 
 # =====================================================
 # HELPER FUNKTIONEN
 # =====================================================
-def get_league_name(league_key):
-    league_map = {
-        "soccer_epl": "Premier League",
-        "soccer_italy_serie_a": "Serie A",
-        "soccer_spain_la_liga": "La Liga",
-        "soccer_germany_bundesliga": "Bundesliga",
-        "soccer_france_ligue_one": "Ligue 1",
-        "soccer_netherlands_eredivisie": "Eredivisie",
-        "soccer_portugal_primeira_liga": "Primeira Liga",
-        "soccer_belgium_first_div": "Belgium Pro League",
-        "soccer_turkey_super_lig": "Süper Lig",
-        "soccer_england_efl_champ": "Championship",
-        "soccer_scotland_premier": "Scottish Premiership",
-        "soccer_austria_bundesliga": "Austrian Bundesliga",
-        "soccer_switzerland_superleague": "Swiss Super League",
-        "soccer_russia_premier_league": "Russian Premier League",
-        "soccer_greece_super_league": "Greek Super League",
-        "soccer_denmark_superliga": "Danish Superliga",
-        "soccer_sweden_allsvenskan": "Swedish Allsvenskan",
-        "soccer_norway_eliteserien": "Norwegian Eliteserien",
-        "soccer_poland_ekstraklasa": "Polish Ekstraklasa",
-        "soccer_czech_republic_first_league": "Czech First League",
-        "soccer_ukraine_premier_league": "Ukrainian Premier League",
-        "soccer_usa_mls": "MLS",
-        "soccer_brazil_serie_a": "Brasileirão",
-        "soccer_argentina_primera_division": "Argentinian Primera",
-        "soccer_mexico_liga_mx": "Liga MX",
-        "soccer_japan_j1_league": "J1 League",
-        "soccer_korea_kleague1": "K League 1",
-        "soccer_australia_aleague": "A-League"
-    }
-    return league_map.get(league_key, league_key)
-
-def get_country_emoji(league_key):
-    country_map = {
-        'england': '🏴󠁧󠁢󠁥󠁮󠁧󠁿',
-        'germany': '🇩🇪',
-        'spain': '🇪🇸',
-        'italy': '🇮🇹',
-        'france': '🇫🇷',
-        'netherlands': '🇳🇱',
-        'portugal': '🇵🇹',
-        'belgium': '🇧🇪',
-        'turkey': '🇹🇷',
-        'scotland': '🏴󠁧󠁢󠁳󠁣󠁴󠁿',
-        'austria': '🇦🇹',
-        'switzerland': '🇨🇭',
-        'russia': '🇷🇺',
-        'greece': '🇬🇷',
-        'denmark': '🇩🇰',
-        'sweden': '🇸🇪',
-        'norway': '🇳🇴',
-        'poland': '🇵🇱',
-        'czech': '🇨🇿',
-        'ukraine': '🇺🇦',
-        'usa': '🇺🇸',
-        'brazil': '🇧🇷',
-        'argentina': '🇦🇷',
-        'mexico': '🇲🇽',
-        'japan': '🇯🇵',
-        'korea': '🇰🇷',
-        'australia': '🇦🇺'
+def get_sport_emoji(sport_name):
+    emoji_map = {
+        "NBA": "🏀",
+        "Euroleague": "🏀",
+        "basketball": "🏀",
+        "NHL": "🏒",
+        "Swedish Hockey League": "🏒",
+        "icehockey": "🏒",
+        "ATP Australian Open": "🎾",
+        "tennis": "🎾",
+        "Premier League": "⚽",
+        "Serie A": "⚽",
+        "soccer": "⚽"
     }
     
-    league_key_lower = league_key.lower()
-    for country, emoji in country_map.items():
-        if country in league_key_lower:
+    for key, emoji in emoji_map.items():
+        if key.lower() in sport_name.lower():
             return emoji
     
-    return '🏟️'
-
-def get_country_emoji_by_name(country_name):
-    emoji_map = {
-        'England': '🏴󠁧󠁢󠁥󠁮󠁧󠁿',
-        'Germany': '🇩🇪',
-        'Spain': '🇪🇸',
-        'Italy': '🇮🇹',
-        'France': '🇫🇷',
-        'Netherlands': '🇳🇱',
-        'Portugal': '🇵🇹',
-        'Belgium': '🇧🇪',
-        'Turkey': '🇹🇷',
-        'Scotland': '🏴󠁧󠁢󠁳󠁣󠁴󠁿',
-        'Austria': '🇦🇹',
-        'Switzerland': '🇨🇭',
-        'Russia': '🇷🇺',
-        'Greece': '🇬🇷',
-        'Denmark': '🇩🇰',
-        'Sweden': '🇸🇪',
-        'Norway': '🇳🇴',
-        'Poland': '🇵🇱',
-        'Czech Republic': '🇨🇿',
-        'Ukraine': '🇺🇦',
-        'USA': '🇺🇸',
-        'Brazil': '🇧🇷',
-        'Argentina': '🇦🇷',
-        'Mexico': '🇲🇽',
-        'Japan': '🇯🇵',
-        'South Korea': '🇰🇷',
-        'Australia': '🇦🇺'
-    }
-    
-    return emoji_map.get(country_name, '🌍')
-
-def get_country_by_league(league_key):
-    country_map = {
-        "soccer_epl": "England",
-        "soccer_italy_serie_a": "Italy",
-        "soccer_spain_la_liga": "Spain",
-        "soccer_germany_bundesliga": "Germany",
-        "soccer_france_ligue_one": "France",
-        "soccer_netherlands_eredivisie": "Netherlands",
-        "soccer_portugal_primeira_liga": "Portugal",
-        "soccer_belgium_first_div": "Belgium",
-        "soccer_turkey_super_lig": "Turkey",
-        "soccer_england_efl_champ": "England",
-        "soccer_scotland_premier": "Scotland",
-        "soccer_austria_bundesliga": "Austria",
-        "soccer_switzerland_superleague": "Switzerland",
-        "soccer_russia_premier_league": "Russia",
-        "soccer_greece_super_league": "Greece",
-        "soccer_denmark_superliga": "Denmark",
-        "soccer_sweden_allsvenskan": "Sweden",
-        "soccer_norway_eliteserien": "Norway",
-        "soccer_poland_ekstraklasa": "Poland",
-        "soccer_czech_republic_first_league": "Czech Republic",
-        "soccer_ukraine_premier_league": "Ukraine",
-        "soccer_usa_mls": "USA",
-        "soccer_brazil_serie_a": "Brazil",
-        "soccer_argentina_primera_division": "Argentina",
-        "soccer_mexico_liga_mx": "Mexico",
-        "soccer_japan_j1_league": "Japan",
-        "soccer_korea_kleague1": "South Korea",
-        "soccer_australia_aleague": "Australia"
-    }
-    return country_map.get(league_key, "")
+    return "🎯"
 
 # =====================================================
 # HAUPTPROGRAMM
 # =====================================================
 def main():
-    print("🤖 ValueEdge Telegram Bot - ERWEITERTE FILTER")
+    print("🤖 ValueEdge Bot - MULTI-SPORT SCANNER")
     print(f"Backend: {BACKEND_URL}")
-    print("🎯 Filter: Quote 1.40-5.0, Edge≥1.0%")
+    print("🏀 Basketball: NBA, Euroleague")
+    print("🏒 Eishockey: NHL, Swedish Hockey")
+    print("🎾 Tennis: ATP Australian Open")
+    print("✅ Winter-Proof! Keine Winterpause!")
     
     app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
     
@@ -544,13 +416,12 @@ def main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("scan", scan))
     app.add_handler(CommandHandler("bets", bets))
-    app.add_handler(CommandHandler("analysis", analysis))
-    app.add_handler(CommandHandler("leagues", leagues))
+    app.add_handler(CommandHandler("sports", sports))
     app.add_handler(CommandHandler("stats", stats))
-    app.add_handler(CommandHandler("top", top))
-    app.add_handler(CommandHandler("country", country))
+    app.add_handler(CommandHandler("analysis", analysis))
+    app.add_handler(CommandHandler("sport", sport_cmd))
     
-    print("✅ Bot gestartet mit erweiterten Filtern")
+    print("✅ Bot gestartet mit Multi-Sport Support")
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
