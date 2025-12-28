@@ -2,8 +2,8 @@ import os
 import sys
 import requests
 import logging
-from telegram import Update
-from telegram.ext import Application, CommandHandler, ContextTypes
+from telegram import Bot, Update
+from telegram.ext import Updater, CommandHandler, CallbackContext
 
 # =====================================================
 # KONFIGURATION
@@ -26,7 +26,6 @@ logger = logging.getLogger(__name__)
 # BACKEND FUNKTIONEN
 # =====================================================
 def get_backend(endpoint):
-    """Holt Daten vom Backend"""
     try:
         response = requests.get(
             f"{BACKEND_URL}{endpoint}",
@@ -43,7 +42,6 @@ def get_backend(endpoint):
         return None
 
 def post_backend(endpoint):
-    """Scan starten"""
     try:
         response = requests.post(
             f"{BACKEND_URL}{endpoint}",
@@ -60,10 +58,10 @@ def post_backend(endpoint):
         return None
 
 # =====================================================
-# TELEGRAM BEFEHLE
+# TELEGRAM BEFEHLE (SYNCHRON FÜR VERSION 13.15)
 # =====================================================
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
+def start(update: Update, context: CallbackContext):
+    update.message.reply_text(
         "🤖 *ValueEdge Bot*\n\n"
         "Verfügbare Befehle:\n"
         "/start - Diese Hilfe\n"
@@ -75,14 +73,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode='Markdown'
     )
 
-async def scan(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🔄 Starte Scan...")
+def scan(update: Update, context: CallbackContext):
+    update.message.reply_text("🔄 Starte Scan...")
     result = post_backend("/scan")
     
     if result:
         bets_found = result.get("total_value_bets", 0)
         if bets_found > 0:
-            await update.message.reply_text(
+            update.message.reply_text(
                 f"✅ *Scan fertig!*\n\n"
                 f"🏆 **{bets_found} Value Bets** gefunden\n"
                 f"⏱️ Dauer: {result.get('duration_seconds', 0):.1f}s\n\n"
@@ -90,16 +88,16 @@ async def scan(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 parse_mode='Markdown'
             )
         else:
-            await update.message.reply_text(
+            update.message.reply_text(
                 "🤷 *Keine Value Bets gefunden*\n"
                 "Markt ist effizient heute.",
                 parse_mode='Markdown'
             )
     else:
-        await update.message.reply_text("❌ Scan fehlgeschlagen")
+        update.message.reply_text("❌ Scan fehlgeschlagen")
 
-async def bets(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("📊 Lade Value Bets...")
+def bets(update: Update, context: CallbackContext):
+    update.message.reply_text("📊 Lade Value Bets...")
     data = get_backend("/feed?limit=5")
     
     if data and data.get("bets"):
@@ -123,15 +121,15 @@ async def bets(update: Update, context: ContextTypes.DEFAULT_TYPE):
             message += f"  ---\n"
         
         message += f"\nTotal: {len(bets)} Value Bets"
-        await update.message.reply_text(message, parse_mode='Markdown')
+        update.message.reply_text(message, parse_mode='Markdown')
     else:
-        await update.message.reply_text(
+        update.message.reply_text(
             "📭 *Keine Value Bets verfügbar*\n"
             "Tippe /scan um neue zu suchen.",
             parse_mode='Markdown'
         )
 
-async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+def stats(update: Update, context: CallbackContext):
     data = get_backend("/health")
     
     if data:
@@ -141,17 +139,17 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"• Odds API: {data.get('odds_api', '❓')}\n"
             f"• Letzte Prüfung: {data.get('timestamp', '')[:19]}"
         )
-        await update.message.reply_text(message, parse_mode='Markdown')
+        update.message.reply_text(message, parse_mode='Markdown')
     else:
-        await update.message.reply_text("❌ Konnte Status nicht laden")
+        update.message.reply_text("❌ Konnte Status nicht laden")
 
-async def health(update: Update, context: ContextTypes.DEFAULT_TYPE):
+def health(update: Update, context: CallbackContext):
     data = get_backend("/health")
     
     if data and data.get("database") == "OK" and data.get("odds_api") == "OK":
-        await update.message.reply_text("✅ *Alles OK!*", parse_mode='Markdown')
+        update.message.reply_text("✅ *Alles OK!*", parse_mode='Markdown')
     else:
-        await update.message.reply_text("⚠️ *Probleme gefunden*", parse_mode='Markdown')
+        update.message.reply_text("⚠️ *Probleme gefunden*", parse_mode='Markdown')
 
 # =====================================================
 # BOT STARTEN
@@ -162,18 +160,23 @@ def main():
             print("❌ FEHLER: TELEGRAM_BOT_TOKEN nicht gesetzt!")
             sys.exit(1)
         
-        app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
+        # Updater erstellen (Version 13.15)
+        updater = Updater(TELEGRAM_BOT_TOKEN, use_context=True)
+        dispatcher = updater.dispatcher
         
-        app.add_handler(CommandHandler("start", start))
-        app.add_handler(CommandHandler("scan", scan))
-        app.add_handler(CommandHandler("bets", bets))
-        app.add_handler(CommandHandler("stats", stats))
-        app.add_handler(CommandHandler("health", health))
+        # Befehle hinzufügen
+        dispatcher.add_handler(CommandHandler("start", start))
+        dispatcher.add_handler(CommandHandler("scan", scan))
+        dispatcher.add_handler(CommandHandler("bets", bets))
+        dispatcher.add_handler(CommandHandler("stats", stats))
+        dispatcher.add_handler(CommandHandler("health", health))
         
-        print("🤖 Telegram Bot wird gestartet...")
+        print("🤖 Telegram Bot wird gestartet (Version 13.15)...")
         print("🚀 Bot läuft! Drücke Ctrl+C zum Beenden.")
         
-        app.run_polling()
+        # Bot starten
+        updater.start_polling()
+        updater.idle()
         
     except Exception as e:
         logger.error(f"Bot Fehler: {e}")
