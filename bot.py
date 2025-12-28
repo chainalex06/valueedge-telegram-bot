@@ -41,11 +41,14 @@ def get_backend(endpoint, timeout=30):
         if response.status_code == 200:
             return response.json()
         else:
-            logger.error(f"Backend {response.status_code}: {response.text[:100]}")
-            return None
+            logger.error(f"Backend {response.status_code} für {endpoint}: {response.text[:200]}")
+            return {"error": f"Status {response.status_code}", "details": response.text[:200]}
+    except requests.exceptions.Timeout:
+        logger.error(f"Timeout für {endpoint}")
+        return {"error": "Timeout", "details": "Backend antwortet nicht"}
     except Exception as e:
-        logger.error(f"Verbindungsfehler: {e}")
-        return None
+        logger.error(f"Verbindungsfehler für {endpoint}: {e}")
+        return {"error": str(e)}
 
 # =====================================================
 # TELEGRAM COMMANDS
@@ -254,75 +257,88 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def analysis(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = await update.message.reply_text("📊 Analysiere Multi-Sport Daten...")
     
-    result = get_backend("/stats/sports")
-    
-    if not result or 'error' in result:
-        await msg.edit_text("❌ Kann Analyse nicht laden")
-        return
-    
-    total_bets = result.get('total_value_bets', 0)
-    
-    if total_bets == 0:
-        await msg.edit_text(
-            "📭 Keine Value Bets für Analyse\n"
-            "📅 Datum: 28.12.2025\n"
-            "💡 Tippe /scan für neuen Scan!",
-            parse_mode='Markdown'
-        )
-        return
-    
-    avg_edge = result.get('average_edge', 0)
-    top_sports = result.get('top_sports', [])
-    sport_stats = result.get('sport_statistics', {})
-    
-    message = "📊 *MULTI-SPORT ANALYSE*\n"
-    message += "📅 Datum: 28.12.2025\n\n"
-    message += f"• Gesamt Value Bets: {total_bets}\n"
-    message += f"• Durchschnitt Edge: {avg_edge:.1f}%\n"
-    message += f"• Winter-Proof: ✅ Ja\n\n"
-    
-    message += "🏆 *TOP SPORTARTEN NACH VALUE BETS:*\n"
-    for sport in top_sports[:3]:
-        sport_name = sport.get('sport', 'Unknown')
-        count = sport.get('count', 0)
-        avg = sport.get('avg_edge', 0)
-        sport_type = sport.get('type', 'unknown')
-        emoji = get_sport_type_emoji(sport_type)
+    try:
+        # 1. Zuerst Backend-Status prüfen
+        health = get_backend("/health")
+        if not health or 'error' in health:
+            await msg.edit_text("❌ Backend nicht erreichbar")
+            return
         
-        message += f"  {emoji} {sport_name}: {count} Bets (Ø{avg:.1f}%)\n"
-    
-    # Edge-Verteilung
-    high_edges = 0
-    medium_edges = 0
-    low_edges = 0
-    
-    for sport, stats in sport_stats.items():
-        avg_edge = stats.get('avg_edge', 0)
+        # 2. Statistiken holen
+        result = get_backend("/stats/sports")
         
-        if avg_edge > 5:
-            high_edges += 1
-        elif avg_edge >= 2:
-            medium_edges += 1
+        if not result:
+            await msg.edit_text("❌ Kann Analyse nicht laden: Backend liefert keine Daten")
+            return
+        
+        if 'error' in result:
+            error_msg = result.get('error', 'Unbekannter Fehler')
+            error_details = result.get('details', '')
+            await msg.edit_text(f"❌ Backend-Fehler: {error_msg}\n\nDetails: {error_details[:100]}")
+            return
+        
+        if result.get('status') == 'error':
+            await msg.edit_text(f"❌ {result.get('message', 'Unbekannter Fehler')}")
+            return
+        
+        total_bets = result.get('total_value_bets', 0)
+        
+        if total_bets == 0:
+            await msg.edit_text(
+                "📭 Keine Value Bets für Analyse\n"
+                "📅 Datum: 28.12.2025\n"
+                "💡 Tippe /scan für neuen Scan!",
+                parse_mode='Markdown'
+            )
+            return
+        
+        avg_edge = result.get('average_edge', 0)
+        top_sports = result.get('top_sports', [])
+        edge_dist = result.get('edge_distribution', {})
+        
+        message = "📊 *MULTI-SPORT ANALYSE*\n"
+        message += "📅 Datum: 28.12.2025\n\n"
+        message += f"• Gesamt Value Bets: {total_bets}\n"
+        message += f"• Durchschnitt Edge: {avg_edge:.1f}%\n"
+        message += f"• Winter-Proof: ✅ Ja\n\n"
+        
+        message += "🏆 *TOP SPORTARTEN NACH VALUE BETS:*\n"
+        for sport in top_sports[:3]:
+            sport_name = sport.get('sport', 'Unknown')
+            count = sport.get('count', 0)
+            avg = sport.get('avg_edge', 0)
+            sport_type = sport.get('type', 'unknown')
+            emoji = get_sport_type_emoji(sport_type)
+            
+            message += f"  {emoji} {sport_name}: {count} Bets (Ø{avg:.1f}%)\n"
+        
+        # Edge-Verteilung
+        high_edges = edge_dist.get('high_edges', 0)
+        medium_edges = edge_dist.get('medium_edges', 0)
+        low_edges = edge_dist.get('low_edges', 0)
+        
+        message += f"\n📈 *EDGE-VERTEILUNG:*\n"
+        message += f"  • Hoch (>5%): {high_edges} Bets\n"
+        message += f"  • Mittel (2-5%): {medium_edges} Bets\n"
+        message += f"  • Niedrig (<2%): {low_edges} Bets\n\n"
+        
+        # Empfehlung basierend auf Datum
+        today = datetime.now()
+        if today.month in [12, 1]:  # Winter
+            message += "❄️ *WINTER-EMPFEHLUNG:*\n"
+            message += "  • Fokussier auf NBA 🏀\n"
+            message += "  • NHL hat gute Value 🏒\n"
+            message += "  • Tennis indoor 🎾\n"
+            message += "  • Fußball erst ab Januar ⚽\n"
         else:
-            low_edges += 1
-    
-    message += f"\n📈 *EDGE-VERTEILUNG:*\n"
-    message += f"  • Hoch (>5%): {high_edges} Sportarten\n"
-    message += f"  • Mittel (2-5%): {medium_edges} Sportarten\n"
-    message += f"  • Niedrig (<2%): {low_edges} Sportarten\n\n"
-    
-    # Empfehlung basierend auf Datum
-    today = datetime.now()
-    if today.month in [12, 1]:  # Winter
-        message += "❄️ *WINTER-EMPFEHLUNG:*\n"
-        message += "  • Fokussier auf NBA 🏀\n"
-        message += "  • NHL hat gute Value 🏒\n"
-        message += "  • Tennis indoor 🎾\n"
-        message += "  • Fußball erst ab Januar ⚽\n"
-    else:
-        message += "🌞 *EMPFEHLUNG:* Alle Sportarten aktiv\n"
-    
-    await msg.edit_text(message, parse_mode='Markdown')
+            message += "🌞 *EMPFEHLUNG:* Alle Sportarten aktiv\n"
+        
+        await msg.edit_text(message, parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Analysis Fehler: {e}")
+        await msg.edit_text(f"❌ Unerwarteter Fehler: {str(e)[:100]}")
+        return
 
 async def sport_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
