@@ -3,7 +3,7 @@ import sys
 import requests
 import logging
 from telegram import Bot, Update
-from telegram.ext import Updater, CommandHandler
+from telegram.ext import Updater, CommandHandler, CallbackContext
 
 # =====================================================
 # KONFIGURATION
@@ -58,9 +58,10 @@ def post_backend(endpoint):
         return None
 
 # =====================================================
-# TELEGRAM BEFEHLE (EINFACH & FUNKTIONIEREND)
+# TELEGRAM BEFEHLE (KORREKTE SIGNATUR)
 # =====================================================
-def start(bot, update):
+def start(update: Update, context: CallbackContext):
+    """Start-Befehl /start"""
     update.message.reply_text(
         "🤖 *ValueEdge Bot*\n\n"
         "Verfügbare Befehle:\n"
@@ -73,7 +74,8 @@ def start(bot, update):
         parse_mode='Markdown'
     )
 
-def scan(bot, update):
+def scan(update: Update, context: CallbackContext):
+    """Scan starten /scan"""
     update.message.reply_text("🔄 Starte Scan...")
     result = post_backend("/scan")
     
@@ -96,7 +98,8 @@ def scan(bot, update):
     else:
         update.message.reply_text("❌ Scan fehlgeschlagen")
 
-def bets(bot, update):
+def bets(update: Update, context: CallbackContext):
+    """Value Bets anzeigen /bets"""
     update.message.reply_text("📊 Lade Value Bets...")
     data = get_backend("/feed?limit=5")
     
@@ -129,7 +132,8 @@ def bets(bot, update):
             parse_mode='Markdown'
         )
 
-def stats(bot, update):
+def stats(update: Update, context: CallbackContext):
+    """Statistiken /stats"""
     data = get_backend("/health")
     
     if data:
@@ -143,7 +147,8 @@ def stats(bot, update):
     else:
         update.message.reply_text("❌ Konnte Status nicht laden")
 
-def health(bot, update):
+def health(update: Update, context: CallbackContext):
+    """Health Check /health"""
     data = get_backend("/health")
     
     if data and data.get("database") == "OK" and data.get("odds_api") == "OK":
@@ -152,7 +157,7 @@ def health(bot, update):
         update.message.reply_text("⚠️ *Probleme gefunden*", parse_mode='Markdown')
 
 # =====================================================
-# BOT STARTEN (EINFACHSTE VERSION)
+# BOT STARTEN (MIT use_context=True)
 # =====================================================
 def main():
     try:
@@ -160,20 +165,23 @@ def main():
             print("❌ FEHLER: TELEGRAM_BOT_TOKEN nicht gesetzt!")
             sys.exit(1)
         
-        # Updater erstellen (OHNE use_context - für ältere Versionen)
-        updater = Updater(TELEGRAM_BOT_TOKEN)
+        # Updater mit use_context=True erstellen
+        updater = Updater(TELEGRAM_BOT_TOKEN, use_context=True)
+        
+        # Dispatcher holen
+        dispatcher = updater.dispatcher
         
         # Befehle hinzufügen
-        dp = updater.dispatcher
-        dp.add_handler(CommandHandler("start", start))
-        dp.add_handler(CommandHandler("scan", scan))
-        dp.add_handler(CommandHandler("bets", bets))
-        dp.add_handler(CommandHandler("stats", stats))
-        dp.add_handler(CommandHandler("health", health))
+        dispatcher.add_handler(CommandHandler("start", start))
+        dispatcher.add_handler(CommandHandler("scan", scan))
+        dispatcher.add_handler(CommandHandler("bets", bets))
+        dispatcher.add_handler(CommandHandler("stats", stats))
+        dispatcher.add_handler(CommandHandler("health", health))
         
         print("🤖 Telegram Bot wird gestartet...")
         print("✅ Python Version: 3.11")
         print("✅ Telegram Bot Version: 13.15")
+        print("✅ use_context=True aktiviert")
         print("🚀 Bot läuft! Drücke Ctrl+C zum Beenden.")
         
         # Bot starten
