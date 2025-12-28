@@ -58,7 +58,7 @@ def post_backend(endpoint):
         return None
 
 # =====================================================
-# TELEGRAM BEFEHLE (SYNCHRON FÜR VERSION 13.15)
+# TELEGRAM BEFEHLE
 # =====================================================
 def start(update: Update, context: CallbackContext):
     update.message.reply_text(
@@ -101,10 +101,10 @@ def bets(update: Update, context: CallbackContext):
     data = get_backend("/feed?limit=5")
     
     if data and data.get("bets"):
-        bets = data["bets"]
+        bets_list = data["bets"]
         message = "🎯 *Aktuelle Value Bets:*\n\n"
         
-        for bet in bets:
+        for bet in bets_list:
             match = bet.get("match", "???")
             edge = bet.get("edge", 0)
             pick = bet.get("pick", "")
@@ -120,7 +120,7 @@ def bets(update: Update, context: CallbackContext):
             message += f"  🎯 {pick_text} (+{edge}%)\n"
             message += f"  ---\n"
         
-        message += f"\nTotal: {len(bets)} Value Bets"
+        message += f"\nTotal: {len(bets_list)} Value Bets"
         update.message.reply_text(message, parse_mode='Markdown')
     else:
         update.message.reply_text(
@@ -171,7 +171,7 @@ def main():
         dispatcher.add_handler(CommandHandler("stats", stats))
         dispatcher.add_handler(CommandHandler("health", health))
         
-        print("🤖 Telegram Bot wird gestartet (Version 13.15)...")
+        print("🤖 Telegram Bot wird gestartet (Version 13.15 mit Pillow)...")
         print("🚀 Bot läuft! Drücke Ctrl+C zum Beenden.")
         
         # Bot starten
