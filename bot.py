@@ -1,9 +1,10 @@
+# bot.py - ValueEdge Telegram Bot (FIXED VERSION)
 import os
-import sys
 import requests
 import logging
-from telegram import Update
-from telegram.ext import Updater, CommandHandler, CallbackContext
+import time
+from telegram import Bot, Update
+from telegram.ext import Application, CommandHandler, ContextTypes
 
 # =====================================================
 # KONFIGURATION
@@ -26,204 +27,232 @@ logger = logging.getLogger(__name__)
 # BACKEND FUNKTIONEN
 # =====================================================
 def get_backend(endpoint):
+    """Holt Daten vom Backend"""
     try:
+        logger.info(f"GET {BACKEND_URL}{endpoint}")
         response = requests.get(
             f"{BACKEND_URL}{endpoint}",
             headers={"X-API-Key": BACKEND_API_KEY},
-            timeout=10
+            timeout=15
         )
+        logger.info(f"Status: {response.status_code}")
+        
         if response.status_code == 200:
             return response.json()
         else:
-            logger.error(f"Backend Fehler {response.status_code}")
+            logger.error(f"Fehler {response.status_code}: {response.text}")
             return None
+    except requests.exceptions.Timeout:
+        logger.error("Timeout: Backend antwortet nicht (30s)")
+        return None
+    except requests.exceptions.ConnectionError:
+        logger.error("Connection Error: Backend nicht erreichbar")
+        return None
     except Exception as e:
-        logger.error(f"Verbindungsfehler: {e}")
+        logger.error(f"Unerwarteter Fehler: {str(e)}")
         return None
 
 def post_backend(endpoint):
+    """Sendet Daten an Backend"""
     try:
+        logger.info(f"POST {BACKEND_URL}{endpoint}")
         response = requests.post(
             f"{BACKEND_URL}{endpoint}",
             headers={"X-API-Key": BACKEND_API_KEY},
-            timeout=30
+            timeout=45  # Scan kann lange dauern
         )
+        logger.info(f"Status: {response.status_code}")
+        
         if response.status_code == 200:
             return response.json()
         else:
-            logger.error(f"Scan Fehler {response.status_code}")
+            logger.error(f"Fehler {response.status_code}: {response.text}")
             return None
+    except requests.exceptions.Timeout:
+        logger.error("Timeout: Scan dauert zu lange")
+        return None
     except Exception as e:
-        logger.error(f"Scan Verbindungsfehler: {e}")
+        logger.error(f"Fehler: {str(e)}")
         return None
 
 # =====================================================
-# TELEGRAM BEFEHLE (KORREKTE SIGNATUR)
+# TELEGRAM COMMAND HANDLERS
 # =====================================================
-def start(update: Update, context: CallbackContext):
-    """Start-Befehl /start"""
-    update.message.reply_text(
-        "🤖 *ValueEdge Scanner Bot*\n"
-        "━━━━━━━━━━━━━━━━━━━━\n\n"
-        "📋 *Verfügbare Befehle:*\n"
-        "• /start – Diese Hilfe anzeigen\n"
-        "• /scan – Neuen Value Scan starten\n"
-        "• /bets – Aktuelle Value Bets anzeigen\n"
-        "• /stats – System Statistiken\n"
-        "• /health – Systemstatus prüfen\n\n"
-        "🚀 *Bereit für Value Bets!*\n"
-        "Tippe /scan um loszulegen!",
+async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/start - Hilfe anzeigen"""
+    user = update.effective_user
+    await update.message.reply_text(
+        f"🤖 *ValueEdge Bot*\n\n"
+        f"Hallo {user.first_name}! Ich scanne für Value Bets.\n\n"
+        f"*Befehle:*\n"
+        f"/start - Diese Hilfe\n"
+        f"/scan - Neuen Scan starten (30-60s)\n"
+        f"/bets - Letzte Value Bets anzeigen\n"
+        f"/stats - System Status\n"
+        f"/health - Backend Verbindung testen\n"
+        f"/test - Schnelltest (sofortige Antwort)\n\n"
+        f"*Filter:* Quote 1.55-4.5, Edge ≥1.5%",
         parse_mode='Markdown'
     )
 
-def scan(update: Update, context: CallbackContext):
-    """Scan starten /scan"""
-    update.message.reply_text("🔄 *Scan wird gestartet...*\nBitte warten (30-60 Sekunden)...", parse_mode='Markdown')
+async def scan_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/scan - Starte neuen Scan"""
+    await update.message.reply_text(
+        "🔄 *Scan wird gestartet...*\n"
+        "Bitte warten (30-60 Sekunden)...",
+        parse_mode='Markdown'
+    )
     
+    # Status-Nachricht speichern für Updates
+    status_msg = await update.message.reply_text("⏳ Scanne Ligen...")
+    
+    # Backend Scan starten
     result = post_backend("/scan")
     
     if result:
-        bets_found = result.get("total_value_bets", 0)
-        if bets_found > 0:
-            update.message.reply_text(
-                f"✅ *Scan abgeschlossen!*\n\n"
-                f"🏆 **{bets_found} Value Bets** gefunden\n"
-                f"⏱️ Dauer: {result.get('duration_seconds', 0):.1f}s\n\n"
-                "📊 *Details:*\n"
-                f"• Premier League: {len([b for b in result.get('results', []) if b.get('league') == 'Premier League'])} Bets\n"
-                f"• Bundesliga: {len([b for b in result.get('results', []) if b.get('league') == 'Bundesliga'])} Bets\n\n"
-                "Tippe /bets um sie anzuzeigen!",
-                parse_mode='Markdown'
-            )
+        if 'error' in result:
+            await status_msg.edit_text(f"❌ Scan fehlgeschlagen: {result['error']}")
         else:
-            update.message.reply_text(
-                "🤷 *Keine Value Bets gefunden*\n\n"
-                "Das ist normal! Der Markt ist heute effizient.\n"
-                "Versuche es in 6 Stunden erneut.\n\n"
-                "📈 *Tipp:* Scanne mehr Ligen für bessere Chancen!",
-                parse_mode='Markdown'
-            )
-    else:
-        update.message.reply_text("❌ *Scan fehlgeschlagen*\nBackend nicht erreichbar.", parse_mode='Markdown')
-
-def bets(update: Update, context: CallbackContext):
-    """Value Bets anzeigen /bets"""
-    update.message.reply_text("📊 *Lade Value Bets...*", parse_mode='Markdown')
-    data = get_backend("/feed?limit=5")
-    
-    if data and data.get("bets"):
-        bets_list = data["bets"]
-        message = "🎯 *Aktuelle Value Bets:*\n\n"
-        
-        for bet in bets_list:
-            match = bet.get("match", "???")
-            edge = bet.get("edge", 0)
-            pick = bet.get("pick", "")
+            bets = result.get('total_value_bets', 0)
+            duration = result.get('duration_seconds', 0)
             
-            if pick == "HOME":
-                pick_text = "🏠 Heimsieg"
-            elif pick == "AWAY":
-                pick_text = "✈️ Auswärtssieg"
+            if bets > 0:
+                await status_msg.edit_text(
+                    f"✅ *Scan abgeschlossen!*\n\n"
+                    f"• Gefunden: *{bets}* Value Bets\n"
+                    f"• Dauer: *{duration:.1f}s*\n"
+                    f"• Ligen: *{result.get('leagues_scanned', 0)}*\n\n"
+                    f"Tippe /bets um sie anzuzeigen! 🎯",
+                    parse_mode='Markdown'
+                )
             else:
-                pick_text = "⚖️ Unentschieden"
-            
-            # Berechne faire Quote
-            odds = bet.get("odds_home" if pick == "HOME" else "odds_away" if pick == "AWAY" else "odds_draw", 0)
-            fair_odds = round(odds / (1 + edge/100), 2)
-            
-            message += f"• *{match}*\n"
-            message += f"  {pick_text} @{odds}\n"
-            message += f"  📈 Edge: +{edge}%\n"
-            message += f"  ⚖️ Faire Quote: {fair_odds}\n"
-            message += f"  ─────\n"
-        
-        message += f"\n📊 *Insgesamt:* {len(bets_list)} Value Bets verfügbar\n"
-        message += "🔍 Tippe /scan für neue Value Bets!"
-        
-        update.message.reply_text(message, parse_mode='Markdown')
+                await status_msg.edit_text(
+                    f"✅ *Scan abgeschlossen*\n\n"
+                    f"• Gefunden: *0* Value Bets\n"
+                    f"• Dauer: *{duration:.1f}s*\n"
+                    f"• Ligen: *{result.get('leagues_scanned', 0)}*\n\n"
+                    f"Keine guten Value Bets heute. 😕",
+                    parse_mode='Markdown'
+                )
     else:
-        update.message.reply_text(
-            "📭 *Keine Value Bets verfügbar*\n\n"
-            "Starte einen Scan mit /scan\n"
-            "oder probiere es später nochmal!",
+        await status_msg.edit_text(
+            "❌ *Backend nicht erreichbar!*\n\n"
+            "Das Backend antwortet nicht. Bitte:\n"
+            "1. Prüfe ob das Backend online ist\n"
+            "2. Warte 1 Minute und versuche es erneut\n"
+            "3. Kontaktiere den Support",
             parse_mode='Markdown'
         )
 
-def stats(update: Update, context: CallbackContext):
-    """Statistiken /stats"""
-    update.message.reply_text("📈 *Lade Statistiken...*", parse_mode='Markdown')
+async def bets_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/bets - Zeige Value Bets"""
+    await update.message.reply_text("📊 Lade Value Bets...")
+    
+    data = get_backend("/feed?limit=5")
+    
+    if data and data.get('bets'):
+        bets = data['bets']
+        message = "🎯 *Letzte Value Bets:*\n\n"
+        
+        for bet in bets[:5]:  # Max 5 anzeigen
+            match = bet.get('match', 'Unbekannt')
+            edge = bet.get('edge', 0)
+            pick = bet.get('pick', '')
+            odds = bet.get(f'odds_{pick.lower()}', 0)
+            
+            message += (
+                f"• *{match}*\n"
+                f"  ⚡ Pick: {pick} @ {odds:.2f}\n"
+                f"  📈 Edge: +{edge}%\n"
+                f"  🏆 Liga: {bet.get('league', '')}\n\n"
+            )
+        
+        message += f"*Insgesamt:* {len(bets)} Value Bets in der Datenbank"
+        await update.message.reply_text(message, parse_mode='Markdown')
+    else:
+        await update.message.reply_text(
+            "📭 *Keine Value Bets verfügbar*\n\n"
+            "Starte einen Scan mit /scan oder probiere es später nochmal!",
+            parse_mode='Markdown'
+        )
+
+async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/stats - System Statistiken"""
+    await update.message.reply_text("📈 Lade Statistiken...")
+    
     data = get_backend("/health")
     
     if data:
         message = (
-            "📊 *System Status*\n"
-            "━━━━━━━━━━━━━━━━━━━━\n\n"
-            f"• 🗄️ *Datenbank:* {data.get('database', '❓')}\n"
-            f"• 🔗 *Odds API:* {data.get('odds_api', '❓')}\n"
-            f"• 🔐 *API Key:* {data.get('backend_api_key_set', '❓')}\n"
-            f"• 🕐 *Letzte Prüfung:* {data.get('timestamp', '')[:19]}\n\n"
-            "🌐 *Backend:* https://value-bet-backend-production.up.railway.app"
+            f"*📊 System Status*\n\n"
+            f"• *Datenbank:* {data.get('database', '❓')}\n"
+            f"• *Odds API:* {data.get('odds_api', '❓')}\n"
+            f"• *Backend Key:* ✅\n"
+            f"• *Letzte Prüfung:*\n"
+            f"  {data.get('timestamp', 'Unbekannt')}\n\n"
+            f"*Backend:* {BACKEND_URL}"
         )
-        update.message.reply_text(message, parse_mode='Markdown')
+        await update.message.reply_text(message, parse_mode='Markdown')
     else:
-        update.message.reply_text("❌ Konnte Status nicht laden.", parse_mode='Markdown')
+        await update.message.reply_text(
+            "❌ *Kann Backend nicht erreichen*\n"
+            "Bitte prüfe die Verbindung!",
+            parse_mode='Markdown'
+        )
 
-def health(update: Update, context: CallbackContext):
-    """Health Check /health"""
-    data = get_backend("/health")
+async def health_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/health - Backend Verbindung testen"""
+    test_result = get_backend("/health")
     
-    if data and data.get("database") == "OK" and data.get("odds_api") == "OK":
-        update.message.reply_text("✅ *Alles OK!* 🚀", parse_mode='Markdown')
+    if test_result:
+        if test_result.get('database') == 'OK' and test_result.get('odds_api') == 'OK':
+            await update.message.reply_text("✅ *Alles OK!* Backend ist erreichbar.", parse_mode='Markdown')
+        else:
+            await update.message.reply_text(
+                f"⚠️ *Probleme gefunden:*\n"
+                f"DB: {test_result.get('database')}\n"
+                f"API: {test_result.get('odds_api')}",
+                parse_mode='Markdown'
+            )
     else:
-        update.message.reply_text("⚠️ *Probleme gefunden*", parse_mode='Markdown')
+        await update.message.reply_text("❌ *Backend nicht erreichbar!*", parse_mode='Markdown')
+
+async def test_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/test - Schnelltest für sofortige Antwort"""
+    await update.message.reply_text("✅ Bot ist online und funktioniert!")
 
 # =====================================================
-# BOT STARTEN (MIT FIX FÜR CONFLICT)
+# HAUPTPROGRAMM
 # =====================================================
 def main():
-    try:
-        if not TELEGRAM_BOT_TOKEN:
-            print("❌ FEHLER: TELEGRAM_BOT_TOKEN nicht gesetzt!")
-            sys.exit(1)
-        
-        # Updater mit Konfiguration gegen Conflict
-        updater = Updater(
-            TELEGRAM_BOT_TOKEN, 
-            use_context=True,
-            request_kwargs={
-                'read_timeout': 10,
-                'connect_timeout': 10
-            }
-        )
-        
-        # Dispatcher holen
-        dispatcher = updater.dispatcher
-        
-        # Befehle hinzufügen
-        dispatcher.add_handler(CommandHandler("start", start))
-        dispatcher.add_handler(CommandHandler("scan", scan))
-        dispatcher.add_handler(CommandHandler("bets", bets))
-        dispatcher.add_handler(CommandHandler("stats", stats))
-        dispatcher.add_handler(CommandHandler("health", health))
-        
-        print("🤖 Telegram Bot wird gestartet...")
-        print("✅ Python Version: 3.11")
-        print("✅ Telegram Bot Version: 13.15")
-        print("✅ use_context=True aktiviert")
-        print("✅ Conflict-Fix aktiviert")
-        print("🚀 Bot läuft! Drücke Ctrl+C zum Beenden.")
-        
-        # Bot starten
-        updater.start_polling(
-            drop_pending_updates=True,  # Alte Updates ignorieren
-            timeout=10,
-            poll_interval=0.5
-        )
-        updater.idle()
-        
-    except Exception as e:
-        logger.error(f"Bot Fehler: {e}")
-        sys.exit(1)
+    """Starte den Telegram Bot"""
+    
+    print("🤖 ValueEdge Telegram Bot (FIXED VERSION)")
+    print("=" * 50)
+    print(f"Token: {'✅' if TELEGRAM_BOT_TOKEN else '❌'}")
+    print(f"Backend Key: {'✅' if BACKEND_API_KEY else '❌'}")
+    print(f"Backend URL: {BACKEND_URL}")
+    print("=" * 50)
+    
+    if not TELEGRAM_BOT_TOKEN:
+        print("❌ FEHLER: TELEGRAM_BOT_TOKEN nicht gesetzt!")
+        return
+    
+    # Bot erstellen
+    application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
+    
+    # Commands hinzufügen
+    application.add_handler(CommandHandler("start", start_command))
+    application.add_handler(CommandHandler("scan", scan_command))
+    application.add_handler(CommandHandler("bets", bets_command))
+    application.add_handler(CommandHandler("stats", stats_command))
+    application.add_handler(CommandHandler("health", health_command))
+    application.add_handler(CommandHandler("test", test_command))
+    
+    print("✅ Bot gestartet. Drücke Strg+C zum Beenden.")
+    
+    # Bot starten (polling)
+    application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
     main()
