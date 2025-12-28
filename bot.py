@@ -2,7 +2,7 @@ import os
 import sys
 import requests
 import logging
-from telegram import Bot, Update
+from telegram import Update
 from telegram.ext import Updater, CommandHandler, CallbackContext
 
 # =====================================================
@@ -63,44 +63,52 @@ def post_backend(endpoint):
 def start(update: Update, context: CallbackContext):
     """Start-Befehl /start"""
     update.message.reply_text(
-        "🤖 *ValueEdge Bot*\n\n"
-        "Verfügbare Befehle:\n"
-        "/start - Diese Hilfe\n"
-        "/scan - Neuen Scan starten\n"
-        "/bets - Value Bets anzeigen\n"
-        "/stats - Statistiken\n"
-        "/health - Systemstatus\n\n"
-        "Bot ist bereit! 🚀",
+        "🤖 *ValueEdge Scanner Bot*\n"
+        "━━━━━━━━━━━━━━━━━━━━\n\n"
+        "📋 *Verfügbare Befehle:*\n"
+        "• /start – Diese Hilfe anzeigen\n"
+        "• /scan – Neuen Value Scan starten\n"
+        "• /bets – Aktuelle Value Bets anzeigen\n"
+        "• /stats – System Statistiken\n"
+        "• /health – Systemstatus prüfen\n\n"
+        "🚀 *Bereit für Value Bets!*\n"
+        "Tippe /scan um loszulegen!",
         parse_mode='Markdown'
     )
 
 def scan(update: Update, context: CallbackContext):
     """Scan starten /scan"""
-    update.message.reply_text("🔄 Starte Scan...")
+    update.message.reply_text("🔄 *Scan wird gestartet...*\nBitte warten (30-60 Sekunden)...", parse_mode='Markdown')
+    
     result = post_backend("/scan")
     
     if result:
         bets_found = result.get("total_value_bets", 0)
         if bets_found > 0:
             update.message.reply_text(
-                f"✅ *Scan fertig!*\n\n"
+                f"✅ *Scan abgeschlossen!*\n\n"
                 f"🏆 **{bets_found} Value Bets** gefunden\n"
                 f"⏱️ Dauer: {result.get('duration_seconds', 0):.1f}s\n\n"
-                "Tippe /bets um sie zu sehen!",
+                "📊 *Details:*\n"
+                f"• Premier League: {len([b for b in result.get('results', []) if b.get('league') == 'Premier League'])} Bets\n"
+                f"• Bundesliga: {len([b for b in result.get('results', []) if b.get('league') == 'Bundesliga'])} Bets\n\n"
+                "Tippe /bets um sie anzuzeigen!",
                 parse_mode='Markdown'
             )
         else:
             update.message.reply_text(
-                "🤷 *Keine Value Bets gefunden*\n"
-                "Markt ist effizient heute.",
+                "🤷 *Keine Value Bets gefunden*\n\n"
+                "Das ist normal! Der Markt ist heute effizient.\n"
+                "Versuche es in 6 Stunden erneut.\n\n"
+                "📈 *Tipp:* Scanne mehr Ligen für bessere Chancen!",
                 parse_mode='Markdown'
             )
     else:
-        update.message.reply_text("❌ Scan fehlgeschlagen")
+        update.message.reply_text("❌ *Scan fehlgeschlagen*\nBackend nicht erreichbar.", parse_mode='Markdown')
 
 def bets(update: Update, context: CallbackContext):
     """Value Bets anzeigen /bets"""
-    update.message.reply_text("📊 Lade Value Bets...")
+    update.message.reply_text("📊 *Lade Value Bets...*", parse_mode='Markdown')
     data = get_backend("/feed?limit=5")
     
     if data and data.get("bets"):
@@ -113,51 +121,64 @@ def bets(update: Update, context: CallbackContext):
             pick = bet.get("pick", "")
             
             if pick == "HOME":
-                pick_text = "Heimsieg"
+                pick_text = "🏠 Heimsieg"
             elif pick == "AWAY":
-                pick_text = "Auswärtssieg"
+                pick_text = "✈️ Auswärtssieg"
             else:
-                pick_text = "Unentschieden"
+                pick_text = "⚖️ Unentschieden"
+            
+            # Berechne faire Quote
+            odds = bet.get("odds_home" if pick == "HOME" else "odds_away" if pick == "AWAY" else "odds_draw", 0)
+            fair_odds = round(odds / (1 + edge/100), 2)
             
             message += f"• *{match}*\n"
-            message += f"  🎯 {pick_text} (+{edge}%)\n"
-            message += f"  ---\n"
+            message += f"  {pick_text} @{odds}\n"
+            message += f"  📈 Edge: +{edge}%\n"
+            message += f"  ⚖️ Faire Quote: {fair_odds}\n"
+            message += f"  ─────\n"
         
-        message += f"\nTotal: {len(bets_list)} Value Bets"
+        message += f"\n📊 *Insgesamt:* {len(bets_list)} Value Bets verfügbar\n"
+        message += "🔍 Tippe /scan für neue Value Bets!"
+        
         update.message.reply_text(message, parse_mode='Markdown')
     else:
         update.message.reply_text(
-            "📭 *Keine Value Bets verfügbar*\n"
-            "Tippe /scan um neue zu suchen.",
+            "📭 *Keine Value Bets verfügbar*\n\n"
+            "Starte einen Scan mit /scan\n"
+            "oder probiere es später nochmal!",
             parse_mode='Markdown'
         )
 
 def stats(update: Update, context: CallbackContext):
     """Statistiken /stats"""
+    update.message.reply_text("📈 *Lade Statistiken...*", parse_mode='Markdown')
     data = get_backend("/health")
     
     if data:
         message = (
-            "📊 *System Status*\n\n"
-            f"• Datenbank: {data.get('database', '❓')}\n"
-            f"• Odds API: {data.get('odds_api', '❓')}\n"
-            f"• Letzte Prüfung: {data.get('timestamp', '')[:19]}"
+            "📊 *System Status*\n"
+            "━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"• 🗄️ *Datenbank:* {data.get('database', '❓')}\n"
+            f"• 🔗 *Odds API:* {data.get('odds_api', '❓')}\n"
+            f"• 🔐 *API Key:* {data.get('backend_api_key_set', '❓')}\n"
+            f"• 🕐 *Letzte Prüfung:* {data.get('timestamp', '')[:19]}\n\n"
+            "🌐 *Backend:* https://value-bet-backend-production.up.railway.app"
         )
         update.message.reply_text(message, parse_mode='Markdown')
     else:
-        update.message.reply_text("❌ Konnte Status nicht laden")
+        update.message.reply_text("❌ Konnte Status nicht laden.", parse_mode='Markdown')
 
 def health(update: Update, context: CallbackContext):
     """Health Check /health"""
     data = get_backend("/health")
     
     if data and data.get("database") == "OK" and data.get("odds_api") == "OK":
-        update.message.reply_text("✅ *Alles OK!*", parse_mode='Markdown')
+        update.message.reply_text("✅ *Alles OK!* 🚀", parse_mode='Markdown')
     else:
         update.message.reply_text("⚠️ *Probleme gefunden*", parse_mode='Markdown')
 
 # =====================================================
-# BOT STARTEN (MIT use_context=True)
+# BOT STARTEN (MIT FIX FÜR CONFLICT)
 # =====================================================
 def main():
     try:
@@ -165,8 +186,15 @@ def main():
             print("❌ FEHLER: TELEGRAM_BOT_TOKEN nicht gesetzt!")
             sys.exit(1)
         
-        # Updater mit use_context=True erstellen
-        updater = Updater(TELEGRAM_BOT_TOKEN, use_context=True)
+        # Updater mit Konfiguration gegen Conflict
+        updater = Updater(
+            TELEGRAM_BOT_TOKEN, 
+            use_context=True,
+            request_kwargs={
+                'read_timeout': 10,
+                'connect_timeout': 10
+            }
+        )
         
         # Dispatcher holen
         dispatcher = updater.dispatcher
@@ -182,10 +210,15 @@ def main():
         print("✅ Python Version: 3.11")
         print("✅ Telegram Bot Version: 13.15")
         print("✅ use_context=True aktiviert")
+        print("✅ Conflict-Fix aktiviert")
         print("🚀 Bot läuft! Drücke Ctrl+C zum Beenden.")
         
         # Bot starten
-        updater.start_polling()
+        updater.start_polling(
+            drop_pending_updates=True,  # Alte Updates ignorieren
+            timeout=10,
+            poll_interval=0.5
+        )
         updater.idle()
         
     except Exception as e:
