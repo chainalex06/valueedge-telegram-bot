@@ -1,4 +1,4 @@
-# bot.py - ValueEdge Bot FÜR ALLE SPORTARTEN
+# bot.py - ValueEdge Bot FÜR MULTI-SPORT MIT NEUER DB
 import os
 import requests
 import logging
@@ -52,27 +52,31 @@ def get_backend(endpoint, timeout=30):
 # =====================================================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "🤖 *ValueEdge Bot - MULTI-SPORT SCANNER*\n\n"
-        "🏀 *Basketball:* NBA, Euroleague\n"
-        "🏒 *Eishockey:* NHL, Swedish Hockey\n"
-        "🎾 *Tennis:* ATP Australian Open\n"
-        "⚽ *Fußball:* (Winterpause)\n\n"
+        "🤖 *ValueEdge Bot - MULTI-SPORT SCANNER*\n"
+        "📅 *Datum: 28.12.2025 (Winter)*\n\n"
+        "🏀 *Aktive Sportarten heute:*\n"
+        "• NBA (Basketball) 🏀\n"
+        "• NHL (Eishockey) 🏒\n"
+        "• Tennis 🎾\n"
+        "• NFL (American Football) 🏈\n\n"
+        "⚽ *Fußball:* Winterpause bis Januar\n\n"
         "✅ /start - Diese Hilfe\n"
-        "✅ /scan - Multi-Sport Scan\n"
+        "✅ /scan - Multi-Sport Scan starten\n"
         "✅ /bets - Value Bets anzeigen\n"
         "✅ /sports - Alle Sportarten\n"
         "✅ /stats - System Status\n"
         "✅ /analysis - Detaillierte Analyse\n"
         "✅ /sport <name> - Value Bets nach Sportart\n\n"
-        "🎯 *Winter-Proof! Keine Winterpause mehr!*",
+        "🎯 *Winter-Proof! Keine Winterpause!*",
         parse_mode='Markdown'
     )
 
 async def scan(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = await update.message.reply_text(
         "🏀🏒🎾 *Multi-Sport Scan startet...*\n"
-        "Scanne aktive Sportarten (keine Winterpause!)\n"
-        "NBA, NHL, Tennis & mehr...",
+        "📅 Datum: 28.12.2025\n"
+        "✅ Scanne aktive Winter-Sportarten\n"
+        "⏱️ Dauer: 1-2 Minuten",
         parse_mode='Markdown'
     )
     
@@ -97,10 +101,11 @@ async def scan(update: Update, context: ContextTypes.DEFAULT_TYPE):
         sports_text = ""
         for sport, count in bets_by_sport.items():
             emoji = get_sport_emoji(sport)
-            sports_text += f"{emoji} {sport}: {count} Bets\n"
+            sports_text += f"{emoji} {sport}: {count} Value Bets\n"
         
         await msg.edit_text(
-            f"🎉 *MULTI-SPORT SCAN ERFOLGREICH!*\n\n"
+            f"🎉 *MULTI-SPORT SCAN ERFOLGREICH!*\n"
+            f"📅 Datum: 28.12.2025\n\n"
             f"🏆 Gescannte Sportarten: {sports_scanned}\n"
             f"✅ Value Bets gefunden: {bets}\n"
             f"🎯 Sportarten mit Bets: {sports_with_bets}\n"
@@ -111,17 +116,18 @@ async def scan(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode='Markdown'
         )
     else:
-        sports_list = result.get('results_summary', {}).get('sports_no_bets', [])
+        sports_list = result.get('results_summary', {}).get('no_bets_sports', [])
         sports_text = "\n".join([f"• {s}" for s in sports_list[:5]])
         
         await msg.edit_text(
-            f"✅ *Scan abgeschlossen*\n\n"
+            f"✅ *Scan abgeschlossen*\n"
+            f"📅 Datum: 28.12.2025\n\n"
             f"🏆 Gescannte Sportarten: {sports_scanned}\n"
             f"🔍 Value Bets: 0\n"
             f"⏱️ Dauer: {duration:.1f}s\n\n"
             f"*Keine Value Bets heute in:*\n"
             f"{sports_text}\n\n"
-            f"💡 Tipp: Probier /analysis für Details",
+            f"💡 Tippe /analysis für Details",
             parse_mode='Markdown'
         )
 
@@ -136,24 +142,25 @@ async def bets(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not bets_list:
         await update.message.reply_text(
             "📭 Keine Value Bets in Datenbank.\n"
-            "🏀🏒🎾 Tippe /scan für Multi-Sport Scan!",
+            "🏀🏒🎾 Tippe /scan für Multi-Sport Scan!\n"
+            "📅 Datum: 28.12.2025",
             parse_mode='Markdown'
         )
         return
     
     bets_sorted = sorted(bets_list, key=lambda x: x.get('edge', 0), reverse=True)
     
-    message = f"🎯 *Top {len(bets_sorted)} Value Bets:*\n\n"
+    message = f"🎯 *Top {len(bets_sorted)} Value Bets:*\n"
+    message += "📅 Datum: 28.12.2025\n\n"
     
     for i, bet in enumerate(bets_sorted[:15], 1):
         match = bet.get('match', 'N/A')
         edge = bet.get('edge', 0)
         pick = bet.get('pick', '')
-        odds = bet.get('odds', bet.get('odds_home', 0))
+        odds = bet.get('odds', 0)
         sport_name = bet.get('sport_name', 'Unbekannt')
         sport_type = bet.get('sport_type', 'unknown')
-        
-        sport_emoji = get_sport_emoji(sport_name)
+        emoji = bet.get('emoji', '🎯')
         
         if edge > 5:
             edge_emoji = "🔥"
@@ -163,10 +170,10 @@ async def bets(update: Update, context: ContextTypes.DEFAULT_TYPE):
             edge_emoji = "📈"
         
         message += (
-            f"{i}. {sport_emoji} *{match}*\n"
+            f"{i}. {emoji} *{match}*\n"
             f"   {edge_emoji} {pick} @ {odds:.2f}\n"
             f"   Edge: +{edge:.1f}%\n"
-            f"   🏆 {sport_name} ({sport_type})\n\n"
+            f"   🏆 {sport_name}\n\n"
         )
     
     await update.message.reply_text(message, parse_mode='Markdown')
@@ -178,25 +185,31 @@ async def sports(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Kann Sportarten nicht laden")
         return
     
-    sports_list = result.get('sports', [])
-    active_sports = [s for s in sports_list if s.get('active')]
-    inactive_sports = [s for s in sports_list if not s.get('active')]
+    sports_by_type = result.get('sports_by_type', {})
+    active_today = result.get('active_today', [])
+    inactive_winter = result.get('inactive_winter', [])
     
-    message = "🏀🏒🎾 *ALLE SPORTARTEN:*\n\n"
+    message = "🏀🏒🎾 *SPORTARTEN KONFIGURATION:*\n"
+    message += "📅 Datum: 28.12.2025\n\n"
     
-    message += f"✅ *AKTIVE SPORTARTEN ({len(active_sports)}):*\n"
-    for sport in active_sports:
-        emoji = get_sport_emoji(sport['name'])
-        message += f"{emoji} {sport['name']} ({sport['sport']})\n"
-        message += f"   • Land: {sport['country']}\n"
-        message += f"   • Priority: {sport['priority']}\n"
-        message += f"   • Outcomes: {', '.join(sport['outcomes'])}\n\n"
+    message += "✅ *AKTIVE SPORTARTEN HEUTE:*\n"
+    for sport in active_today:
+        message += f"• {sport}\n"
     
-    if inactive_sports:
-        message += f"⏸️ *INAKTIVE SPORTARTEN ({len(inactive_sports)}):*\n"
-        for sport in inactive_sports[:5]:  # Nur erste 5 zeigen
-            emoji = get_sport_emoji(sport['name'])
-            message += f"{emoji} {sport['name']} (Winterpause)\n"
+    message += "\n⏸️ *INAKTIV (WINTERPAUSE):*\n"
+    for sport in inactive_winter:
+        message += f"• {sport}\n"
+    
+    message += "\n📊 *KONFIGURIERTE SPORTARTEN:*\n"
+    for sport_type, sports_list in sports_by_type.items():
+        type_emoji = get_sport_type_emoji(sport_type)
+        message += f"\n{type_emoji} *{sport_type.upper()}*:\n"
+        
+        for sport in sports_list[:3]:  # Nur erste 3 zeigen
+            message += f"  • {sport['name']} ({sport['country']})\n"
+        
+        if len(sports_list) > 3:
+            message += f"  • ... und {len(sports_list) - 3} weitere\n"
     
     await update.message.reply_text(message, parse_mode='Markdown')
 
@@ -207,41 +220,41 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Backend nicht erreichbar")
         return
     
-    multi_stats = get_backend("/stats/multi")
+    sports_stats = get_backend("/stats/sports")
     
-    total_bets = result.get('total_value_bets_in_db', 0)
+    total_bets = result.get('total_value_bets', 0)
     active_sports = result.get('active_sports', 0)
-    sports_list = result.get('sports_list', [])
+    sports_list = result.get('sports', [])
     
     sports_text = ""
-    if multi_stats and 'top_sports' in multi_stats:
-        top_sports = multi_stats['top_sports']
+    if sports_stats and 'top_sports' in sports_stats:
+        top_sports = sports_stats['top_sports']
         if top_sports:
-            sports_text = f"\n🏆 *Top Sportart:* {top_sports[0].get('sport', 'N/A')} ({top_sports[0].get('count', 0)} Bets)"
+            top_sport = top_sports[0]
+            sports_text = f"\n🏆 *Top Sportart:* {top_sport.get('sport', 'N/A')} ({top_sport.get('count', 0)} Bets)"
     
     message = (
-        f"📊 *MULTI-SPORT SCANNER STATUS*\n\n"
+        f"📊 *MULTI-SPORT SCANNER STATUS*\n"
+        f"📅 Datum: 28.12.2025\n\n"
         f"• Datenbank: {result.get('database', '❓')}\n"
         f"• Odds API: {result.get('odds_api', '❓')}\n"
         f"• Aktive Sportarten: {active_sports}\n"
         f"• Value Bets in DB: {total_bets}\n"
         f"{sports_text}\n"
+        f"• Winter-Proof: ✅ Ja\n"
         f"• Zeit: {result.get('timestamp', '')[:19]}\n\n"
-        f"✅ *Aktive Sportarten:*\n"
+        f"✅ *Aktive Sportarten heute:*\n"
     )
     
-    for sport in sports_list[:5]:  # Nur erste 5 zeigen
+    for sport in sports_list[:5]:
         message += f"  • {sport}\n"
-    
-    if len(sports_list) > 5:
-        message += f"  • ... und {len(sports_list) - 5} weitere\n"
     
     await update.message.reply_text(message, parse_mode='Markdown')
 
 async def analysis(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = await update.message.reply_text("📊 Analysiere Multi-Sport Daten...")
     
-    result = get_backend("/stats/multi")
+    result = get_backend("/stats/sports")
     
     if not result or 'error' in result:
         await msg.edit_text("❌ Kann Analyse nicht laden")
@@ -250,18 +263,23 @@ async def analysis(update: Update, context: ContextTypes.DEFAULT_TYPE):
     total_bets = result.get('total_value_bets', 0)
     
     if total_bets == 0:
-        await msg.edit_text("📭 Keine Value Bets für Analyse")
+        await msg.edit_text(
+            "📭 Keine Value Bets für Analyse\n"
+            "📅 Datum: 28.12.2025\n"
+            "💡 Tippe /scan für neuen Scan!",
+            parse_mode='Markdown'
+        )
         return
     
     avg_edge = result.get('average_edge', 0)
     top_sports = result.get('top_sports', [])
     sport_stats = result.get('sport_statistics', {})
-    active_sports = result.get('active_sports_today', [])
     
-    message = "📊 *MULTI-SPORT ANALYSE*\n\n"
+    message = "📊 *MULTI-SPORT ANALYSE*\n"
+    message += "📅 Datum: 28.12.2025\n\n"
     message += f"• Gesamt Value Bets: {total_bets}\n"
     message += f"• Durchschnitt Edge: {avg_edge:.1f}%\n"
-    message += f"• Aktive Sportarten heute: {len(active_sports)}\n\n"
+    message += f"• Winter-Proof: ✅ Ja\n\n"
     
     message += "🏆 *TOP SPORTARTEN NACH VALUE BETS:*\n"
     for sport in top_sports[:3]:
@@ -269,9 +287,9 @@ async def analysis(update: Update, context: ContextTypes.DEFAULT_TYPE):
         count = sport.get('count', 0)
         avg = sport.get('avg_edge', 0)
         sport_type = sport.get('type', 'unknown')
-        emoji = get_sport_emoji(sport_name)
+        emoji = get_sport_type_emoji(sport_type)
         
-        message += f"  {emoji} {sport_name} ({sport_type}): {count} Bets (Ø{avg:.1f}%)\n"
+        message += f"  {emoji} {sport_name}: {count} Bets (Ø{avg:.1f}%)\n"
     
     # Edge-Verteilung
     high_edges = 0
@@ -279,7 +297,6 @@ async def analysis(update: Update, context: ContextTypes.DEFAULT_TYPE):
     low_edges = 0
     
     for sport, stats in sport_stats.items():
-        count = stats.get('count', 0)
         avg_edge = stats.get('avg_edge', 0)
         
         if avg_edge > 5:
@@ -289,20 +306,21 @@ async def analysis(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             low_edges += 1
     
-    message += f"\n📈 *EDGE-VERTEILUNG (pro Sportart):*\n"
+    message += f"\n📈 *EDGE-VERTEILUNG:*\n"
     message += f"  • Hoch (>5%): {high_edges} Sportarten\n"
     message += f"  • Mittel (2-5%): {medium_edges} Sportarten\n"
     message += f"  • Niedrig (<2%): {low_edges} Sportarten\n\n"
     
-    # Empfehlung
-    if high_edges > 0:
-        message += "🔥 *EMPFEHLUNG:* Exzellente Value Bets in mehreren Sportarten!"
-    elif medium_edges > 0:
-        message += "⚡ *EMPFEHLUNG:* Gute Value Bets verfügbar"
+    # Empfehlung basierend auf Datum
+    today = datetime.now()
+    if today.month in [12, 1]:  # Winter
+        message += "❄️ *WINTER-EMPFEHLUNG:*\n"
+        message += "  • Fokussier auf NBA 🏀\n"
+        message += "  • NHL hat gute Value 🏒\n"
+        message += "  • Tennis indoor 🎾\n"
+        message += "  • Fußball erst ab Januar ⚽\n"
     else:
-        message += "💡 *EMPFEHLUNG:* Mehr Sportarten aktivieren"
-    
-    message += "\n\n🎯 *Aktive Sportarten:* " + ", ".join(active_sports[:5])
+        message += "🌞 *EMPFEHLUNG:* Alle Sportarten aktiv\n"
     
     await msg.edit_text(message, parse_mode='Markdown')
 
@@ -313,53 +331,49 @@ async def sport_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Beispiele:\n"
             "/sport NBA\n"
             "/sport NHL\n"
-            "/sport Euroleague\n\n"
-            "🏒 Tippe /sports für alle verfügbaren Sportarten",
+            "/sport tennis\n\n"
+            "📅 Heute aktiv: NBA, NHL, Tennis",
             parse_mode='Markdown'
         )
         return
     
     sport_name = ' '.join(context.args).upper()
     
-    # Hole alle Sportarten zuerst
-    sports_result = get_backend("/sports")
-    if not sports_result:
-        await update.message.reply_text("❌ Kann Sportarten nicht laden")
+    # Value Bets filtern
+    result = get_backend("/feed?limit=100&min_edge=1.0")
+    
+    if not result or 'error' in result:
+        await update.message.reply_text("📭 Keine Value Bets verfügbar")
         return
     
-    # Finde passende Sportarten
-    matching_sports = []
-    for sport in sports_result.get('sports', []):
-        if sport_name.lower() in sport.get('name', '').lower():
-            matching_sports.append(sport.get('key'))
-    
-    if not matching_sports:
-        await update.message.reply_text(f"❌ Keine Sportart gefunden für '{sport_name}'")
+    bets_list = result.get('bets', [])
+    if not bets_list:
+        await update.message.reply_text("📭 Datenbank ist leer")
         return
     
-    # Value Bets für diese Sportarten holen
-    all_bets = []
-    for sport_key in matching_sports:
-        result = get_backend(f"/feed?sport={sport_key}&limit=20")
-        if result and 'bets' in result:
-            all_bets.extend(result['bets'])
+    # Nach Sportart filtern
+    sport_bets = []
+    for bet in bets_list:
+        bet_sport = bet.get('sport_name', '').upper()
+        bet_type = bet.get('sport_type', '').upper()
+        
+        if sport_name in bet_sport or sport_name in bet_type:
+            sport_bets.append(bet)
     
-    if not all_bets:
+    if not sport_bets:
         await update.message.reply_text(
-            f"📭 Keine Value Bets für {sport_name}\n\n"
-            f"💡 Tippe /scan für neuen Multi-Sport Scan",
+            f"📭 Keine Value Bets für '{sport_name}'\n\n"
+            f"📅 Datum: 28.12.2025\n"
+            f"💡 Heute aktiv: NBA, NHL, Tennis",
             parse_mode='Markdown'
         )
         return
     
-    # Nach Edge sortieren
-    sorted_bets = sorted(all_bets, key=lambda x: x.get('edge', 0), reverse=True)
-    sport_info = next((s for s in sports_result.get('sports', []) if s.get('key') == matching_sports[0]), {})
+    sorted_bets = sorted(sport_bets, key=lambda x: x.get('edge', 0), reverse=True)
+    sport_emoji = get_sport_emoji(sport_name)
     
-    sport_display_name = sport_info.get('name', sport_name)
-    sport_emoji = get_sport_emoji(sport_display_name)
-    
-    message = f"{sport_emoji} *VALUE BETS FÜR {sport_display_name.upper()}:*\n\n"
+    message = f"{sport_emoji} *VALUE BETS FÜR {sport_name.upper()}*\n"
+    message += "📅 Datum: 28.12.2025\n\n"
     
     for i, bet in enumerate(sorted_bets[:10], 1):
         match = bet.get('match', 'N/A')
@@ -379,25 +393,36 @@ async def sport_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # HELPER FUNKTIONEN
 # =====================================================
 def get_sport_emoji(sport_name):
-    emoji_map = {
-        "NBA": "🏀",
-        "Euroleague": "🏀",
-        "basketball": "🏀",
-        "NHL": "🏒",
-        "Swedish Hockey League": "🏒",
-        "icehockey": "🏒",
-        "ATP Australian Open": "🎾",
-        "tennis": "🎾",
-        "Premier League": "⚽",
-        "Serie A": "⚽",
-        "soccer": "⚽"
-    }
+    sport_name = sport_name.lower()
     
-    for key, emoji in emoji_map.items():
-        if key.lower() in sport_name.lower():
-            return emoji
+    if any(x in sport_name for x in ['nba', 'basketball', 'euroleague']):
+        return "🏀"
+    elif any(x in sport_name for x in ['nhl', 'hockey', 'eishockey', 'shl']):
+        return "🏒"
+    elif any(x in sport_name for x in ['tennis', 'atp', 'wta']):
+        return "🎾"
+    elif any(x in sport_name for x in ['football', 'nfl', 'american']):
+        return "🏈"
+    elif any(x in sport_name for x in ['soccer', 'fußball', 'premier', 'bundesliga']):
+        return "⚽"
+    else:
+        return "🎯"
+
+def get_sport_type_emoji(sport_type):
+    sport_type = sport_type.lower()
     
-    return "🎯"
+    if sport_type == "basketball":
+        return "🏀"
+    elif sport_type == "icehockey":
+        return "🏒"
+    elif sport_type == "tennis":
+        return "🎾"
+    elif sport_type == "americanfootball":
+        return "🏈"
+    elif sport_type == "soccer":
+        return "⚽"
+    else:
+        return "🎯"
 
 # =====================================================
 # HAUPTPROGRAMM
@@ -405,9 +430,8 @@ def get_sport_emoji(sport_name):
 def main():
     print("🤖 ValueEdge Bot - MULTI-SPORT SCANNER")
     print(f"Backend: {BACKEND_URL}")
-    print("🏀 Basketball: NBA, Euroleague")
-    print("🏒 Eishockey: NHL, Swedish Hockey")
-    print("🎾 Tennis: ATP Australian Open")
+    print("📅 Datum: 28.12.2025")
+    print("🏀 Aktive Sportarten: NBA, NHL, Tennis")
     print("✅ Winter-Proof! Keine Winterpause!")
     
     app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
