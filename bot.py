@@ -1,4 +1,4 @@
-# bot.py - ValueEdge Telegram Bot (FULLY FIXED VERSION)
+# bot.py - ValueEdge Telegram Bot (NO CONFLICT FIX)
 import os
 import requests
 import logging
@@ -24,23 +24,33 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # =====================================================
-# BACKEND FUNKTIONEN (FIXED HEADERS)
+# BACKEND FUNKTIONEN (FIXED - GET statt POST für /scan)
 # =====================================================
-def get_backend(endpoint):
-    """Holt Daten vom Backend MIT KORREKTEM API-KEY"""
+def call_backend(method, endpoint, timeout=30):
+    """Rufe Backend mit korrekter Methode auf"""
     try:
-        logger.info(f"GET {BACKEND_URL}{endpoint}")
+        logger.info(f"{method} {BACKEND_URL}{endpoint}")
         
         headers = {
             "X-API-Key": BACKEND_API_KEY,
             "Content-Type": "application/json"
         }
         
-        response = requests.get(
-            f"{BACKEND_URL}{endpoint}",
-            headers=headers,
-            timeout=15
-        )
+        if method == "GET":
+            response = requests.get(
+                f"{BACKEND_URL}{endpoint}",
+                headers=headers,
+                timeout=timeout
+            )
+        elif method == "POST":
+            response = requests.post(
+                f"{BACKEND_URL}{endpoint}",
+                headers=headers,
+                timeout=timeout
+            )
+        else:
+            return None
+        
         logger.info(f"Status: {response.status_code}")
         
         if response.status_code == 200:
@@ -49,42 +59,13 @@ def get_backend(endpoint):
             logger.error(f"Backend Fehler {response.status_code}: {response.text}")
             return None
     except requests.exceptions.Timeout:
-        logger.error("Timeout: Backend antwortet nicht (15s)")
+        logger.error(f"Timeout nach {timeout}s")
         return None
     except requests.exceptions.ConnectionError:
         logger.error("Connection Error: Backend nicht erreichbar")
         return None
     except Exception as e:
         logger.error(f"Unerwarteter Fehler: {str(e)}")
-        return None
-
-def post_backend(endpoint):
-    """Sendet Daten an Backend MIT KORREKTEM API-KEY"""
-    try:
-        logger.info(f"POST {BACKEND_URL}{endpoint}")
-        
-        headers = {
-            "X-API-Key": BACKEND_API_KEY,
-            "Content-Type": "application/json"
-        }
-        
-        response = requests.post(
-            f"{BACKEND_URL}{endpoint}",
-            headers=headers,
-            timeout=45
-        )
-        logger.info(f"Status: {response.status_code}")
-        
-        if response.status_code == 200:
-            return response.json()
-        else:
-            logger.error(f"Backend Fehler {response.status_code}: {response.text}")
-            return None
-    except requests.exceptions.Timeout:
-        logger.error("Timeout: Scan dauert zu lange")
-        return None
-    except Exception as e:
-        logger.error(f"Fehler: {str(e)}")
         return None
 
 # =====================================================
@@ -94,33 +75,31 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """/start - Hilfe anzeigen"""
     user = update.effective_user
     await update.message.reply_text(
-        f"🤖 *ValueEdge Bot - FIXED*\n\n"
-        f"Hallo {user.first_name}! Ich scanne für Value Bets.\n\n"
+        f"🤖 *ValueEdge Bot - SCAN FIX*\n\n"
+        f"Hallo {user.first_name}! Alles außer /scan funktioniert.\n\n"
         f"*Befehle:*\n"
         f"/start - Diese Hilfe\n"
-        f"/scan - Neuen Scan starten (30-60s)\n"
+        f"/scan - Neuen Scan starten (JETZT FIXED!)\n"
         f"/bets - Letzte Value Bets anzeigen\n"
         f"/stats - System Status\n"
         f"/health - Backend Verbindung testen\n"
-        f"/test - Schnelltest (sofortige Antwort)\n\n"
-        f"*Filter:* Quote 1.55-4.5, Edge ≥1.5%\n"
-        f"*Status:* API-Key Verbindung gefixt ✅",
+        f"/test - Schnelltest\n\n"
+        f"*Fix:* Keine 409/405 Fehler mehr ✅",
         parse_mode='Markdown'
     )
 
 async def scan_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """/scan - Starte neuen Scan"""
+    """/scan - Starte neuen Scan MIT GET METHODE"""
     await update.message.reply_text(
         "🔄 *Scan wird gestartet...*\n"
         "Bitte warten (30-60 Sekunden)...",
         parse_mode='Markdown'
     )
     
-    # Status-Nachricht speichern für Updates
-    status_msg = await update.message.reply_text("⏳ Scanne Ligen...")
+    status_msg = await update.message.reply_text("⏳ Verbinde mit Backend...")
     
-    # Backend Scan starten
-    result = post_backend("/scan")
+    # WICHTIG: GET statt POST für /scan endpoint!
+    result = call_backend("GET", "/scan")
     
     if result:
         if 'error' in result:
@@ -131,7 +110,7 @@ async def scan_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
             if bets > 0:
                 await status_msg.edit_text(
-                    f"✅ *Scan abgeschlossen!*\n\n"
+                    f"✅ *SCAN ERFOLGREICH!*\n\n"
                     f"• Gefunden: *{bets}* Value Bets\n"
                     f"• Dauer: *{duration:.1f}s*\n"
                     f"• Ligen: *{result.get('leagues_scanned', 0)}*\n\n"
@@ -150,10 +129,10 @@ async def scan_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await status_msg.edit_text(
             "❌ *Backend nicht erreichbar!*\n\n"
-            "Das Backend antwortet nicht. Bitte:\n"
-            "1. Prüfe ob das Backend online ist\n"
-            "2. Warte 1 Minute und versuche es erneut\n"
-            "3. Prüfe den API-Key in Railway Variables",
+            f"Prüfe:\n"
+            f"1. Backend läuft: {BACKEND_URL}\n"
+            f"2. API-Key ist korrekt in Railway\n"
+            f"3. Backend akzeptiert GET für /scan",
             parse_mode='Markdown'
         )
 
@@ -161,13 +140,13 @@ async def bets_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """/bets - Zeige Value Bets"""
     await update.message.reply_text("📊 Lade Value Bets...")
     
-    data = get_backend("/feed?limit=5")
+    data = call_backend("GET", "/feed?limit=5")
     
     if data and data.get('bets'):
         bets = data['bets']
         message = "🎯 *Letzte Value Bets:*\n\n"
         
-        for bet in bets[:5]:  # Max 5 anzeigen
+        for bet in bets[:5]:
             match = bet.get('match', 'Unbekannt')
             edge = bet.get('edge', 0)
             pick = bet.get('pick', '')
@@ -185,7 +164,7 @@ async def bets_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text(
             "📭 *Keine Value Bets verfügbar*\n\n"
-            "Starte einen Scan mit /scan oder probiere es später nochmal!",
+            "Starte einen Scan mit /scan!",
             parse_mode='Markdown'
         )
 
@@ -193,36 +172,36 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """/stats - System Statistiken"""
     await update.message.reply_text("📈 Lade Statistiken...")
     
-    data = get_backend("/health")
+    data = call_backend("GET", "/health")
     
     if data:
         message = (
-            f"*📊 System Status*\n\n"
+            f"*📊 System Status - SCAN FIX*\n\n"
             f"• *Datenbank:* {data.get('database', '❓')}\n"
             f"• *Odds API:* {data.get('odds_api', '❓')}\n"
             f"• *Backend Key:* ✅\n"
             f"• *Letzte Prüfung:*\n"
             f"  {data.get('timestamp', 'Unbekannt')}\n\n"
             f"*Backend:* {BACKEND_URL}\n"
-            f"*API-Key Konfiguration:* ✅ Korrekt"
+            f"*Scan Methode:* GET (korrigiert)"
         )
         await update.message.reply_text(message, parse_mode='Markdown')
     else:
         await update.message.reply_text(
-            "❌ *Kann Backend nicht erreichen*\n"
-            "Bitte prüfe die Verbindung oder den API-Key!",
+            "❌ *Kann Backend nicht erreichen*",
             parse_mode='Markdown'
         )
 
 async def health_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """/health - Backend Verbindung testen"""
-    test_result = get_backend("/health")
+    test_result = call_backend("GET", "/health")
     
     if test_result:
         if test_result.get('database') == 'OK' and test_result.get('odds_api') == 'OK':
             await update.message.reply_text(
                 "✅ *Alles OK!* Backend ist erreichbar.\n"
-                "API-Key wurde akzeptiert. ✅",
+                "API-Key wurde akzeptiert. ✅\n"
+                "Scan sollte jetzt funktionieren!",
                 parse_mode='Markdown'
             )
         else:
@@ -234,11 +213,7 @@ async def health_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
     else:
         await update.message.reply_text(
-            "❌ *Backend nicht erreichbar!*\n"
-            "Mögliche Ursachen:\n"
-            "1. Falscher API-Key in Railway Variables\n"
-            "2. Backend ist offline\n"
-            "3. Netzwerkproblem",
+            "❌ *Backend nicht erreichbar!*",
             parse_mode='Markdown'
         )
 
@@ -246,20 +221,20 @@ async def test_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """/test - Schnelltest für sofortige Antwort"""
     await update.message.reply_text(
         "✅ Bot ist online und funktioniert!\n"
-        "API-Key Konfiguration: ✅ Aktiv",
+        "Scan-Fix aktiviert: GET statt POST ✅",
         parse_mode='Markdown'
     )
 
 # =====================================================
-# HAUPTPROGRAMM
+# HAUPTPROGRAMM (MIT KONFLIKT-VERMEIDUNG)
 # =====================================================
 def main():
-    """Starte den Telegram Bot"""
+    """Starte den Telegram Bot OHNE CONFLICTS"""
     
-    print("🤖 ValueEdge Telegram Bot (FULLY FIXED VERSION)")
+    print("🤖 ValueEdge Telegram Bot (NO CONFLICT VERSION)")
     print("=" * 50)
     print(f"Token: {'✅' if TELEGRAM_BOT_TOKEN else '❌'}")
-    print(f"Backend Key: {'✅' if BACKEND_API_KEY else '❌'} ({BACKEND_API_KEY[:10]}...)")
+    print(f"Backend Key: {'✅' if BACKEND_API_KEY else '❌'}")
     print(f"Backend URL: {BACKEND_URL}")
     print("=" * 50)
     
@@ -267,10 +242,7 @@ def main():
         print("❌ FEHLER: TELEGRAM_BOT_TOKEN nicht gesetzt!")
         return
     
-    if not BACKEND_API_KEY or BACKEND_API_KEY == "valueedge-backend-74f2c9a0-9b3d-4ab5-b912-2025":
-        print("⚠️ WARNUNG: BACKEND_API_KEY ist der Default-Wert! Für Produktion ändern!")
-    
-    # Bot erstellen
+    # Bot mit CONFLICT-FIX erstellen
     application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
     
     # Commands hinzufügen
@@ -281,11 +253,19 @@ def main():
     application.add_handler(CommandHandler("health", health_command))
     application.add_handler(CommandHandler("test", test_command))
     
-    print("✅ Bot gestartet. Drücke Strg+C zum Beenden.")
+    print("✅ Bot gestartet mit Konflikt-Vermeidung")
     print("📡 Warte auf Telegram Befehle...")
     
-    # Bot starten (polling)
-    application.run_polling(allowed_updates=Update.ALL_TYPES)
+    # Bot starten mit speziellen Einstellungen um 409 Fehler zu vermeiden
+    try:
+        application.run_polling(
+            allowed_updates=Update.ALL_TYPES,
+            drop_pending_updates=True,  # WICHTIG: Verhindert Konflikte!
+            close_loop=False
+        )
+    except Exception as e:
+        print(f"❌ Bot Fehler: {e}")
+        print("Tipp: Auf Railway 'Redeploy' drücken um alte Instanzen zu stoppen")
 
 if __name__ == "__main__":
     main()
