@@ -100,6 +100,8 @@ async def make_backend_request(endpoint: str, method: str = "GET", data: dict = 
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Start-Befehl"""
+    sport_lines = "\n".join([f"  • {SPORT_EMOJIS.get(sport, '🎯')} {name}" for sport, name in WINTER_SPORTS.items()])
+    
     welcome_message = f"""
 🤖 <b>ValueEdge Bot - MULTI-SPORT SCANNER</b>
 📅 Datum: 29.12.2025 (Winter Edition)
@@ -107,7 +109,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 🎯 <b>Winter-Proof Scanner</b> - Keine Winterpause!
     
 ✅ Aktive Winter-Sportarten:
-{chr(10).join([f'  • {SPORT_EMOJIS.get(sport, "🎯")} {name}' for sport, name in WINTER_SPORTS.items()])}
+{sport_lines}
 
 <b>🔧 Verfügbare Befehle:</b>
 
@@ -161,12 +163,18 @@ async def scan_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         result = await make_backend_request("/scan", "POST")
         
         if result.get("success"):
-            await loading_msg.edit_text(
-                "✅ <b>Multi-Sport Scan gestartet!</b>\n\n"
+            sport_lines = "\n".join([f"{SPORT_EMOJIS.get(sport, '🎯')} {name}" for sport, name in WINTER_SPORTS.items()])
+            
+            response_text = (
+                f"✅ <b>Multi-Sport Scan gestartet!</b>\n\n"
                 f"📅 Gestartet: {datetime.now().strftime('%H:%M:%S')}\n"
-                "🎯 Scannt alle Winter-Sportarten:\n"
-                f"{chr(10).join([f'{SPORT_EMOJIS.get(sport, \"🎯\")} {name}' for sport, name in WINTER_SPORTS.items()])}\n\n"
-                "ℹ️  Der Scan läuft im Hintergrund. Verwende /bets um die Ergebnisse zu sehen.",
+                f"🎯 Scannt alle Winter-Sportarten:\n"
+                f"{sport_lines}\n\n"
+                f"ℹ️  Der Scan läuft im Hintergrund. Verwende /bets um die Ergebnisse zu sehen."
+            )
+            
+            await loading_msg.edit_text(
+                response_text,
                 parse_mode='HTML'
             )
         else:
@@ -225,10 +233,11 @@ async def bets_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         if count == 0:
             # Keine Bets gefunden
+            sport_info = sport_filter if sport_filter else 'Alle'
             no_bets_message = f"""
 📭 <b>Keine Value Bets gefunden</b>
 
-Sport: {sport_filter if sport_filter else 'Alle'}
+Sport: {sport_info}
 Zeitraum: Letzte 24 Stunden
 
 💡 <b>Mögliche Lösungen:</b>
@@ -279,7 +288,8 @@ Zeitraum: Letzte 24 Stunden
                 message += f"   📅 Gefunden: {bet.get('created_at_formatted', 'N/A')}\n\n"
             
             # Filter-Info
-            message += f"🔧 <i>Filter: Min. Edge {result.get('filters', {}).get('min_edge', 0.3)}%</i>\n"
+            min_edge = result.get('filters', {}).get('min_edge', 0.3)
+            message += f"🔧 <i>Filter: Min. Edge {min_edge}%</i>\n"
             message += f"<code>ID: VB{datetime.now().strftime('%Y%m%d')}</code>"
             
             # Inline Buttons für diese Batch
@@ -413,7 +423,7 @@ Aktive Sportarten: <b>{len([s for s in sports if s.get('active')])}</b>
 async def sport_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Filter nach Sportart"""
     if not context.args:
-        await update.message.reply_text(
+        help_text = (
             "ℹ️  Verwendung: /sport <sport>\n\n"
             "Verfügbare Sportarten:\n"
             "• basketball / nba / 🏀\n"
@@ -422,6 +432,7 @@ async def sport_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "• americanfootball / nfl / 🏈\n\n"
             "Beispiel: /sport basketball"
         )
+        await update.message.reply_text(help_text)
         return
     
     sport_arg = context.args[0].lower()
