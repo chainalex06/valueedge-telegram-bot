@@ -40,7 +40,7 @@ if not TELEGRAM_BOT_TOKEN:
     exit(1)
 
 if not BACKEND_API_KEY:
-    logger.warning("⚠️  BACKEND_API_KEY nicht gesetzt - einige Funktionen könnten eingeschränkt sein")
+    logger.warning("⚠️ BACKEND_API_KEY nicht gesetzt - einige Funktionen könnten eingeschränkt sein")
 
 # Sport-Emoji Mapping
 SPORT_EMOJIS = {
@@ -116,7 +116,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 /scan - Startet Multi-Sport Scan (alle Winter-Sportarten)
 /bets - Zeigt aktuelle Value Bets
 /analysis - Detaillierte Analyse aller Sportarten
-/sport <name> - Filter nach Sportart (z.B. /sport basketball)
+/sport &lt;name&gt; - Filter nach Sportart (z.B. /sport basketball)
 /stats - System-Statistiken
 /help - Zeigt diese Hilfe an
 
@@ -133,7 +133,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("🎯 Scan starten", callback_data="scan")],
         [InlineKeyboardButton("📊 Value Bets anzeigen", callback_data="bets")],
         [InlineKeyboardButton("📈 Analyse", callback_data="analysis")],
-        [InlineKeyboardButton("ℹ️  Hilfe", callback_data="help")]
+        [InlineKeyboardButton("ℹ️ Hilfe", callback_data="help")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
@@ -170,7 +170,7 @@ async def scan_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"📅 Gestartet: {datetime.now().strftime('%H:%M:%S')}\n"
                 f"🎯 Scannt alle Winter-Sportarten:\n"
                 f"{sport_lines}\n\n"
-                f"ℹ️  Der Scan läuft im Hintergrund. Verwende /bets um die Ergebnisse zu sehen."
+                f"ℹ️ Der Scan läuft im Hintergrund. Verwende /bets um die Ergebnisse zu sehen."
             )
             
             await loading_msg.edit_text(
@@ -249,7 +249,7 @@ Zeitraum: Letzte 24 Stunden
 • Min. Edge: 0.3-0.6% (realistisch)
 • Nur aktive Winter-Sportarten
 
-<code>🕐 {datetime.now().strftime('%d.%m.%Y %H:%M')}</code>
+🕐 {datetime.now().strftime('%d.%m.%Y %H:%M')}
 """
             await update.message.reply_text(no_bets_message, parse_mode='HTML')
             return
@@ -290,7 +290,7 @@ Zeitraum: Letzte 24 Stunden
             # Filter-Info
             min_edge = result.get('filters', {}).get('min_edge', 0.3)
             message += f"🔧 <i>Filter: Min. Edge {min_edge}%</i>\n"
-            message += f"<code>ID: VB{datetime.now().strftime('%Y%m%d')}</code>"
+            message += f"ID: VB{datetime.now().strftime('%Y%m%d')}"
             
             # Inline Buttons für diese Batch
             if i == 0:
@@ -306,7 +306,7 @@ Zeitraum: Letzte 24 Stunden
                     ],
                     [
                         InlineKeyboardButton("📈 Analyse", callback_data="analysis"),
-                        InlineKeyboardButton("ℹ️  Hilfe", callback_data="help")
+                        InlineKeyboardButton("ℹ️ Hilfe", callback_data="help")
                     ]
                 ]
                 reply_markup = InlineKeyboardMarkup(keyboard)
@@ -368,8 +368,8 @@ Aktive Sportarten: <b>{len([s for s in sports if s.get('active')])}</b>
                 message += f"\n   🎯 Min. Edge: <b>{edge}%</b>"
                 message += f"\n   ✅ Status: <code>{status}</code>"
             else:
-                message += f"\n⏸️  {name}"
-                message += f"\n   🏖️  Winterpause"
+                message += f"\n⏸️ {name}"
+                message += f"\n   🏖️ Winterpause"
         
         message += f"\n\n<b>📊 SYSTEM STATUS:</b>"
         
@@ -391,14 +391,14 @@ Aktive Sportarten: <b>{len([s for s in sports if s.get('active')])}</b>
             message += "\n• Aktiviere mehr Sportarten"
         elif total_bets < 5:
             message += "\n• Gute Basis, scanne regelmäßig"
-            message += "\n• Überprüfe NFL & Tennis"
+            message += "\n• Überprüfe NFL &amp; Tennis"
             message += "\n• Edge-Filter anpassen"
         else:
             message += "\n• Exzellente Ergebnisse!"
             message += "\n• Regelmäßige Scans empfohlen"
             message += "\n• Ergebnisse verfolgen"
         
-        message += f"\n\n<code>🔗 {BACKEND_URL}</code>"
+        message += f"\n\n🔗 {BACKEND_URL}"
         
         keyboard = [
             [InlineKeyboardButton("🎯 Scan starten", callback_data="scan")],
@@ -424,7 +424,7 @@ async def sport_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Filter nach Sportart"""
     if not context.args:
         help_text = (
-            "ℹ️  Verwendung: /sport <sport>\n\n"
+            "ℹ️ Verwendung: /sport &lt;sport&gt;\n\n"
             "Verfügbare Sportarten:\n"
             "• basketball / nba / 🏀\n"
             "• icehockey / nhl / 🏒\n"
@@ -479,11 +479,11 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     message += f"• {emoji} {name}: {weekly} Bets\n"
         
         message += f"\n<b>🔧 UMWELTVARIABLEN:</b>\n"
-        message += f"• Backend URL: <code>{BACKEND_URL}</code>\n"
+        message += f"• Backend URL: {BACKEND_URL}\n"
         message += f"• API Key: {'✅ Gesetzt' if BACKEND_API_KEY else '❌ Fehlt'}\n"
         message += f"• Bot Token: ✅ Gesetzt\n"
         
-        message += f"\n<code>Winter-Proof Edition 2025</code>"
+        message += f"\nWinter-Proof Edition 2025"
         
         keyboard = [
             [InlineKeyboardButton("📈 Analyse", callback_data="analysis")],
@@ -514,9 +514,9 @@ Version 8.0 (Winter-Proof Edition)
 /start - Startet den Bot
 /scan - Startet Multi-Sport Scan
 /bets - Zeigt Value Bets an
-/bets <sport> - Filter nach Sportart
+/bets &lt;sport&gt; - Filter nach Sportart
 /analysis - Detaillierte Analyse
-/sport <name> - Filter nach Sportart
+/sport &lt;name&gt; - Filter nach Sportart
 /stats - System-Statistiken
 /help - Diese Hilfe
 
@@ -538,12 +538,12 @@ Version 8.0 (Winter-Proof Edition)
 • Datenbank: Supabase
 • API: The Odds API
 
-<b>⚠️  BEKANNTE PROBLEME:</b>
+<b>⚠️ BEKANNTE PROBLEME:</b>
 • "Kann Analyse nicht laden" → Backend neu starten
 • "0 Value Bets" → Edge-Filter senken
 • Duplikate → Automatisch gefiltert
 
-<code>📅 Letztes Update: 29.12.2025</code>
+📅 Letztes Update: 29.12.2025
 """
     
     keyboard = [
@@ -630,7 +630,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"Version: {health.get('version', 'N/A')}\n"
                 f"Datenbank: {health.get('database', 'N/A')}\n"
                 f"Winter-Sportarten: {len(health.get('winter_sports', []))}\n\n"
-                f"<code>✅ Systemprüfung abgeschlossen</code>",
+                f"✅ Systemprüfung abgeschlossen",
                 parse_mode='HTML'
             )
         
