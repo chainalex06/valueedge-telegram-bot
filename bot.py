@@ -1,682 +1,478 @@
 """
-🤖 ValueEdge Telegram Bot - Multi-Sport Scanner
-Version: 8.0 (Winter-Proof Edition)
-Datum: 29.12.2025
-Autor: ValueEdge Team
+🤖 ValueEdge Telegram Bot
+Version: 9.0 (Fixed Edition)
+Datum: 30.12.2025
 """
 
 import os
 import logging
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Optional, Dict, List
 import aiohttp
 import json
+
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application,
     CommandHandler,
-    MessageHandler,
-    filters,
-    ContextTypes,
-    CallbackQueryHandler
+    CallbackQueryHandler,
+    ContextTypes
 )
 
-# Konfiguration
+# =====================================================
+# LOGGING
+# =====================================================
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
 
-# Umgebungsvariablen
+# =====================================================
+# CONFIGURATION
+# =====================================================
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 BACKEND_API_KEY = os.getenv("BACKEND_API_KEY")
 BACKEND_URL = os.getenv("BACKEND_URL", "https://value-bet-backend-production.up.railway.app")
 
-# Konfiguration prüfen
 if not TELEGRAM_BOT_TOKEN:
     logger.error("❌ TELEGRAM_BOT_TOKEN nicht gesetzt!")
     exit(1)
 
-if not BACKEND_API_KEY:
-    logger.warning("⚠️ BACKEND_API_KEY nicht gesetzt - einige Funktionen könnten eingeschränkt sein")
-
-# Sport-Emoji Mapping
+# Sport Emojis
 SPORT_EMOJIS = {
     'basketball': '🏀',
     'icehockey': '🏒',
     'tennis': '🎾',
     'americanfootball': '🏈',
-    'football': '⚽'
+    'soccer': '⚽',
+    'baseball': '⚾'
 }
 
-# Winter-Sportarten (aktiv)
-WINTER_SPORTS = {
-    'basketball': 'NBA Basketball',
-    'icehockey': 'NHL Eishockey',
-    'tennis': 'Tennis',
-    'americanfootball': 'NFL Football'
-}
-
-async def make_backend_request(endpoint: str, method: str = "GET", data: dict = None) -> dict:
-    """Macht eine Anfrage an das Backend"""
-    url = f"{BACKEND_URL}{endpoint}"
+# =====================================================
+# BACKEND API FUNCTIONS
+# =====================================================
+async def api_request(endpoint: str, method: str = "GET", data: dict = None) -> dict:
+    """Macht Anfrage an das Backend"""
     
+    url = f"{BACKEND_URL}{endpoint}"
     headers = {
-        "X-API-Key": BACKEND_API_KEY,
         "Content-Type": "application/json"
     }
     
-    timeout = aiohttp.ClientTimeout(total=30)
+    if BACKEND_API_KEY:
+        headers["X-API-Key"] = BACKEND_API_KEY
+    
+    timeout = aiohttp.ClientTimeout(total=60)
     
     try:
         async with aiohttp.ClientSession(timeout=timeout) as session:
             if method == "GET":
                 async with session.get(url, headers=headers) as response:
-                    response_text = await response.text()
-                    try:
-                        return json.loads(response_text) if response_text else {}
-                    except json.JSONDecodeError:
-                        logger.error(f"JSON Decode Error: {response_text}")
-                        return {"success": False, "error": "Invalid JSON response"}
+                    text = await response.text()
+                    if response.status == 200:
+                        return json.loads(text) if text else {}
+                    else:
+                        return {"success": False, "error": f"HTTP {response.status}"}
             
             elif method == "POST":
                 async with session.post(url, headers=headers, json=data) as response:
-                    response_text = await response.text()
-                    try:
-                        return json.loads(response_text) if response_text else {}
-                    except json.JSONDecodeError:
-                        logger.error(f"JSON Decode Error: {response_text}")
-                        return {"success": False, "error": "Invalid JSON response"}
+                    text = await response.text()
+                    if response.status == 200:
+                        return json.loads(text) if text else {}
+                    else:
+                        return {"success": False, "error": f"HTTP {response.status}"}
     
     except asyncio.TimeoutError:
-        logger.error(f"Timeout bei Anfrage an {url}")
-        return {"success": False, "error": "Timeout bei Verbindung zum Backend"}
-    
+        return {"success": False, "error": "Timeout - Backend antwortet nicht"}
     except Exception as e:
-        logger.error(f"Fehler bei Backend-Anfrage: {str(e)}")
+        logger.error(f"API Fehler: {e}")
         return {"success": False, "error": str(e)}
 
-async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# =====================================================
+# COMMAND HANDLERS
+# =====================================================
+async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Start-Befehl"""
-    sport_lines = "\n".join([f"  • {SPORT_EMOJIS.get(sport, '🎯')} {name}" for sport, name in WINTER_SPORTS.items()])
     
-    welcome_message = f"""
-🤖 <b>ValueEdge Bot - MULTI-SPORT SCANNER</b>
-📅 Datum: 29.12.2025 (Winter Edition)
+    message = """
+🤖 <b>ValueEdge Bot v9.0</b>
+📅 Multi-Sport Value Bet Scanner
 
-🎯 <b>Winter-Proof Scanner</b> - Keine Winterpause!
-    
-✅ Aktive Winter-Sportarten:
-{sport_lines}
+✅ <b>Aktive Sportarten:</b>
+• 🏀 NBA Basketball
+• 🏒 NHL Eishockey
+• 🎾 Tennis (ATP/WTA)
+• 🏈 NFL Football
+• ⚽ Fußball (EPL, Bundesliga)
 
-<b>🔧 Verfügbare Befehle:</b>
-
-/scan - Startet Multi-Sport Scan (alle Winter-Sportarten)
-/bets - Zeigt aktuelle Value Bets
-/analysis - Detaillierte Analyse aller Sportarten
-/sport &lt;name&gt; - Filter nach Sportart (z.B. /sport basketball)
+<b>📋 Befehle:</b>
+/scan - Startet Value Bet Scan
+/bets - Zeigt gefundene Value Bets
 /stats - System-Statistiken
-/help - Zeigt diese Hilfe an
+/help - Hilfe anzeigen
 
-<b>⚙️ Filter-Einstellungen:</b>
-• Basketball: 0.5% Edge
-• Eishockey: 0.4% Edge  
-• Tennis: 0.6% Edge
-• NFL: 0.5% Edge
-
-<code>🔗 Backend: {BACKEND_URL}</code>
+<b>⚙️ Einstellungen:</b>
+• Min. Edge: 0.2%
+• Märkte: H2H, Spreads, Totals
 """
     
     keyboard = [
         [InlineKeyboardButton("🎯 Scan starten", callback_data="scan")],
-        [InlineKeyboardButton("📊 Value Bets anzeigen", callback_data="bets")],
-        [InlineKeyboardButton("📈 Analyse", callback_data="analysis")],
-        [InlineKeyboardButton("ℹ️ Hilfe", callback_data="help")]
+        [InlineKeyboardButton("📊 Value Bets", callback_data="bets")],
+        [InlineKeyboardButton("📈 Statistiken", callback_data="stats")]
     ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
     
     await update.message.reply_text(
-        welcome_message,
+        message,
         parse_mode='HTML',
-        reply_markup=reply_markup,
-        disable_web_page_preview=True
+        reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
-async def scan_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Startet Multi-Sport Scan"""
-    await update.message.reply_text("🔄 Starte Multi-Sport Scan...")
+async def cmd_scan(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Scan-Befehl"""
     
-    # Loading Message
+    # Lade-Nachricht
     loading_msg = await update.message.reply_text(
-        "🔍 Scanne Winter-Sportarten...\n"
+        "🔄 <b>Starte Multi-Sport Scan...</b>\n\n"
         "🏀 NBA Basketball\n"
-        "🏒 NHL Eishockey\n" 
+        "🏒 NHL Eishockey\n"
         "🎾 Tennis\n"
-        "🏈 NFL Football\n\n"
-        "⏳ Bitte warten..."
+        "🏈 NFL Football\n"
+        "⚽ Fußball\n\n"
+        "⏳ Bitte warten (kann bis zu 60 Sekunden dauern)...",
+        parse_mode='HTML'
     )
     
-    try:
-        # Scan starten
-        result = await make_backend_request("/scan", "POST")
-        
-        if result.get("success"):
-            sport_lines = "\n".join([f"{SPORT_EMOJIS.get(sport, '🎯')} {name}" for sport, name in WINTER_SPORTS.items()])
-            
-            response_text = (
-                f"✅ <b>Multi-Sport Scan gestartet!</b>\n\n"
-                f"📅 Gestartet: {datetime.now().strftime('%H:%M:%S')}\n"
-                f"🎯 Scannt alle Winter-Sportarten:\n"
-                f"{sport_lines}\n\n"
-                f"ℹ️ Der Scan läuft im Hintergrund. Verwende /bets um die Ergebnisse zu sehen."
-            )
-            
-            await loading_msg.edit_text(
-                response_text,
-                parse_mode='HTML'
-            )
-        else:
-            await loading_msg.edit_text(
-                f"❌ <b>Fehler beim Starten des Scans:</b>\n{result.get('error', 'Unbekannter Fehler')}",
-                parse_mode='HTML'
-            )
+    # Synchronen Scan ausführen (wartet auf Ergebnis)
+    result = await api_request("/scan/sync", "POST")
     
-    except Exception as e:
-        logger.error(f"Fehler in scan_command: {str(e)}")
+    if result.get("success"):
+        total_bets = result.get("total_bets", 0)
+        total_matches = result.get("total_matches", 0)
+        duration = result.get("duration_seconds", 0)
+        results_by_sport = result.get("results_by_sport", {})
+        
+        # Ergebnis-Nachricht bauen
+        message = f"""
+✅ <b>Scan abgeschlossen!</b>
+
+📊 <b>Ergebnis:</b>
+• Spiele gescannt: <b>{total_matches}</b>
+• Value Bets gefunden: <b>{total_bets}</b>
+• Dauer: {duration}s
+
+<b>Details pro Sportart:</b>
+"""
+        
+        for sport_key, data in results_by_sport.items():
+            if isinstance(data, dict) and "error" not in data:
+                matches = data.get("matches", 0)
+                bets = data.get("bets", 0)
+                emoji = "🎯" if bets > 0 else "⚪"
+                message += f"{emoji} {sport_key}: {bets} Bets ({matches} Spiele)\n"
+        
+        if total_bets > 0:
+            message += f"\n💡 Nutze /bets um die Value Bets anzuzeigen!"
+        else:
+            message += f"\n⚠️ Keine Value Bets gefunden. Versuche es später erneut."
+        
+        keyboard = [
+            [InlineKeyboardButton("📊 Value Bets anzeigen", callback_data="bets")],
+            [InlineKeyboardButton("🔄 Erneut scannen", callback_data="scan")]
+        ]
+        
         await loading_msg.edit_text(
-            f"❌ <b>Fehler:</b>\n{str(e)}",
+            message,
+            parse_mode='HTML',
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+    else:
+        error = result.get("error", "Unbekannter Fehler")
+        await loading_msg.edit_text(
+            f"❌ <b>Scan fehlgeschlagen</b>\n\nFehler: {error}",
             parse_mode='HTML'
         )
 
-async def bets_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Zeigt Value Bets an"""
-    try:
-        # Parameter parsen
-        sport_filter = None
-        if context.args:
-            sport_arg = context.args[0].lower()
-            sport_map = {
-                'basketball': 'basketball',
-                'nba': 'basketball',
-                '🏀': 'basketball',
-                'icehockey': 'icehockey',
-                'hockey': 'icehockey',
-                'nhl': 'icehockey',
-                '🏒': 'icehockey',
-                'tennis': 'tennis',
-                '🎾': 'tennis',
-                'football': 'americanfootball',
-                'nfl': 'americanfootball',
-                '🏈': 'americanfootball'
-            }
-            sport_filter = sport_map.get(sport_arg)
-        
-        # Lade Bets
-        await update.message.reply_text("📊 Lade Value Bets...")
-        
-        endpoint = "/feed"
-        if sport_filter:
-            endpoint = f"/feed?sport={sport_filter}"
-        
-        result = await make_backend_request(endpoint)
-        
-        if not result.get("success"):
-            await update.message.reply_text(
-                f"❌ Fehler beim Laden der Bets: {result.get('error', 'Unbekannter Fehler')}"
-            )
-            return
-        
-        bets = result.get("bets", [])
-        count = result.get("count", 0)
-        
-        if count == 0:
-            # Keine Bets gefunden
-            sport_info = sport_filter if sport_filter else 'Alle'
-            no_bets_message = f"""
-📭 <b>Keine Value Bets gefunden</b>
-
-Sport: {sport_info}
-Zeitraum: Letzte 24 Stunden
-
-💡 <b>Mögliche Lösungen:</b>
-1. Starte einen neuen Scan mit /scan
-2. Überprüfe die Filter-Einstellungen
-3. Warte auf neue Matches
-
-🔧 Aktuelle Filter:
-• Min. Edge: 0.3-0.6% (realistisch)
-• Nur aktive Winter-Sportarten
-
-🕐 {datetime.now().strftime('%d.%m.%Y %H:%M')}
-"""
-            await update.message.reply_text(no_bets_message, parse_mode='HTML')
-            return
-        
-        # Bets in Gruppen aufteilen (max. 10 pro Nachricht)
-        for i in range(0, len(bets), 10):
-            batch = bets[i:i+10]
-            
-            message = f"🎯 <b>Value Edge Scanner</b>\n"
-            message += f"📅 {datetime.now().strftime('%d.%m.%Y %H:%M')}\n"
-            message += f"📊 Gefunden: {count} Value Bets\n\n"
-            
-            if sport_filter:
-                emoji = SPORT_EMOJIS.get(sport_filter, '🎯')
-                message += f"🎮 Sport: {emoji} {sport_filter.capitalize()}\n\n"
-            
-            for bet in batch:
-                sport = bet.get('sport', '')
-                emoji = SPORT_EMOJIS.get(sport, '🎯')
-                edge = float(bet.get('edge', 0))
-                
-                # Confidence Level
-                if edge >= 2.0:
-                    confidence = "🔥"
-                elif edge >= 1.0:
-                    confidence = "⚡"
-                else:
-                    confidence = "💡"
-                
-                message += f"{emoji} <b>{bet.get('match', 'N/A')}</b>\n"
-                message += f"   🎯 <code>{bet.get('team', 'N/A')}</code>\n"
-                message += f"   📊 Odds: <b>{bet.get('odds', 'N/A')}</b>\n"
-                message += f"   📈 Edge: <b>{edge:.2f}%</b> {confidence}\n"
-                message += f"   🏦 {bet.get('bookmaker', 'N/A')}\n"
-                message += f"   🕐 {bet.get('match_time_formatted', 'N/A')}\n"
-                message += f"   📅 Gefunden: {bet.get('created_at_formatted', 'N/A')}\n\n"
-            
-            # Filter-Info
-            min_edge = result.get('filters', {}).get('min_edge', 0.3)
-            message += f"🔧 <i>Filter: Min. Edge {min_edge}%</i>\n"
-            message += f"ID: VB{datetime.now().strftime('%Y%m%d')}"
-            
-            # Inline Buttons für diese Batch
-            if i == 0:
-                keyboard = [
-                    [
-                        InlineKeyboardButton("🔄 Aktualisieren", callback_data="refresh_bets"),
-                        InlineKeyboardButton("🎯 Neuer Scan", callback_data="scan")
-                    ],
-                    [
-                        InlineKeyboardButton("🏀 NBA", callback_data="sport_basketball"),
-                        InlineKeyboardButton("🏒 NHL", callback_data="sport_icehockey"),
-                        InlineKeyboardButton("🎾 Tennis", callback_data="sport_tennis")
-                    ],
-                    [
-                        InlineKeyboardButton("📈 Analyse", callback_data="analysis"),
-                        InlineKeyboardButton("ℹ️ Hilfe", callback_data="help")
-                    ]
-                ]
-                reply_markup = InlineKeyboardMarkup(keyboard)
-            else:
-                reply_markup = None
-            
-            await update.message.reply_text(
-                message,
-                parse_mode='HTML',
-                reply_markup=reply_markup,
-                disable_web_page_preview=True
-            )
+async def cmd_bets(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Bets-Befehl"""
     
-    except Exception as e:
-        logger.error(f"Fehler in bets_command: {str(e)}")
-        await update.message.reply_text(
-            f"❌ Fehler beim Laden der Bets: {str(e)}"
-        )
-
-async def analysis_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Zeigt detaillierte Analyse aller Sportarten"""
-    await update.message.reply_text("📈 Lade Analyse...")
+    # Sport-Filter aus Argumenten
+    sport_filter = None
+    if context.args:
+        sport_map = {
+            'basketball': 'basketball',
+            'nba': 'basketball',
+            'hockey': 'icehockey',
+            'nhl': 'icehockey',
+            'eishockey': 'icehockey',
+            'tennis': 'tennis',
+            'nfl': 'americanfootball',
+            'football': 'americanfootball',
+            'soccer': 'soccer',
+            'fussball': 'soccer'
+        }
+        sport_filter = sport_map.get(context.args[0].lower())
     
-    try:
-        result = await make_backend_request("/stats/sports")
-        
-        if not result.get("success"):
-            await update.message.reply_text(
-                f"❌ Fehler bei der Analyse: {result.get('error', 'Unbekannter Fehler')}"
-            )
-            return
-        
-        sports = result.get("sports", [])
-        total_bets = result.get("total_weekly_bets", 0)
-        
-        message = f"""
-📊 <b>VALUE EDGE MULTI-SPORT ANALYSE</b>
-📅 {datetime.now().strftime('%d.%m.%Y %H:%M')}
-🎯 Winter-Proof Edition
-
-<b>📈 WÖCHENTLICHE STATISTIK:</b>
-Gesamte Value Bets: <b>{total_bets}</b>
-Aktive Sportarten: <b>{len([s for s in sports if s.get('active')])}</b>
-
-<b>🏆 SPORTARTEN-ÜBERSICHT:</b>
-"""
-        
-        for sport in sports:
-            name = sport.get('sport', '')
-            emoji = sport.get('emoji', '🎯')
-            active = sport.get('active', False)
-            weekly = sport.get('weekly_bets', 0)
-            edge = sport.get('min_edge', 0)
-            status = sport.get('status', '')
-            
-            if active:
-                message += f"\n{emoji} <b>{name}</b>"
-                message += f"\n   📊 Bets diese Woche: <b>{weekly}</b>"
-                message += f"\n   🎯 Min. Edge: <b>{edge}%</b>"
-                message += f"\n   ✅ Status: <code>{status}</code>"
-            else:
-                message += f"\n⏸️ {name}"
-                message += f"\n   🏖️ Winterpause"
-        
-        message += f"\n\n<b>📊 SYSTEM STATUS:</b>"
-        
-        # Backend Health check
-        health_result = await make_backend_request("/health")
-        if health_result.get("status") == "healthy":
-            message += "\n🟢 Backend: <code>AKTIV</code>"
-        else:
-            message += "\n🔴 Backend: <code>FEHLER</code>"
-        
-        message += f"\n🤖 Bot: <code>AKTIV</code>"
-        message += f"\n🎯 Version: <code>8.0 Winter-Proof</code>"
-        
-        message += f"\n\n<b>💡 EMPFEHLUNGEN:</b>"
-        
-        if total_bets == 0:
-            message += "\n• Starte einen Scan mit /scan"
-            message += "\n• Überprüfe die Filter-Einstellungen"
-            message += "\n• Aktiviere mehr Sportarten"
-        elif total_bets < 5:
-            message += "\n• Gute Basis, scanne regelmäßig"
-            message += "\n• Überprüfe NFL &amp; Tennis"
-            message += "\n• Edge-Filter anpassen"
-        else:
-            message += "\n• Exzellente Ergebnisse!"
-            message += "\n• Regelmäßige Scans empfohlen"
-            message += "\n• Ergebnisse verfolgen"
-        
-        message += f"\n\n🔗 {BACKEND_URL}"
-        
-        keyboard = [
-            [InlineKeyboardButton("🎯 Scan starten", callback_data="scan")],
-            [InlineKeyboardButton("📊 Value Bets", callback_data="bets")],
-            [InlineKeyboardButton("🔄 Aktualisieren", callback_data="refresh_analysis")]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        await update.message.reply_text(
-            message,
-            parse_mode='HTML',
-            reply_markup=reply_markup,
-            disable_web_page_preview=True
-        )
+    # API-Anfrage
+    endpoint = "/feed"
+    if sport_filter:
+        endpoint = f"/feed?sport={sport_filter}"
     
-    except Exception as e:
-        logger.error(f"Fehler in analysis_command: {str(e)}")
+    result = await api_request(endpoint)
+    
+    if not result.get("success"):
         await update.message.reply_text(
-            f"❌ Fehler bei der Analyse: {str(e)}"
+            f"❌ Fehler: {result.get('error', 'Unbekannt')}"
         )
-
-async def sport_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Filter nach Sportart"""
-    if not context.args:
-        help_text = (
-            "ℹ️ Verwendung: /sport &lt;sport&gt;\n\n"
-            "Verfügbare Sportarten:\n"
-            "• basketball / nba / 🏀\n"
-            "• icehockey / nhl / 🏒\n"
-            "• tennis / 🎾\n"
-            "• americanfootball / nfl / 🏈\n\n"
-            "Beispiel: /sport basketball"
-        )
-        await update.message.reply_text(help_text)
         return
     
-    sport_arg = context.args[0].lower()
-    await bets_command(update, context)
+    bets = result.get("bets", [])
+    count = result.get("count", 0)
+    
+    if count == 0:
+        message = """
+📭 <b>Keine Value Bets gefunden</b>
 
-async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """System-Statistiken"""
-    try:
-        # Backend Health
-        health = await make_backend_request("/health")
-        
-        # Sport Stats
-        stats = await make_backend_request("/stats/sports")
-        
-        message = f"""
-📊 <b>SYSTEM STATISTIKEN</b>
-📅 {datetime.now().strftime('%d.%m.%Y %H:%M')}
+Mögliche Gründe:
+• Noch kein Scan durchgeführt
+• Keine Spiele mit genug Edge
+• Filter zu streng
 
-<b>🤖 BOT STATUS:</b>
-• Version: 8.0 Winter-Proof
-• Laufzeit: Verfügbar
-• Letzter Ping: {datetime.now().strftime('%H:%M:%S')}
-
-<b>🔗 BACKEND STATUS:</b>
+💡 Starte einen neuen Scan mit /scan
 """
-        
-        if health.get("status") == "healthy":
-            message += f"• Status: 🟢 <code>AKTIV</code>\n"
-            message += f"• Datenbank: {health.get('database', 'N/A')}\n"
-            message += f"• Odds API: {health.get('odds_api', 'N/A')}\n"
-            message += f"• Sportarten: {len(health.get('winter_sports', []))}\n"
-        else:
-            message += f"• Status: 🔴 <code>FEHLER</code>\n"
-        
-        message += f"\n<b>🎯 WERTE DIESE WOCHE:</b>\n"
-        
-        if stats.get("success"):
-            sports = stats.get("sports", [])
-            for sport in sports:
-                if sport.get("active"):
-                    name = sport.get("sport", "")
-                    weekly = sport.get("weekly_bets", 0)
-                    emoji = sport.get("emoji", "🎯")
-                    message += f"• {emoji} {name}: {weekly} Bets\n"
-        
-        message += f"\n<b>🔧 UMWELTVARIABLEN:</b>\n"
-        message += f"• Backend URL: {BACKEND_URL}\n"
-        message += f"• API Key: {'✅ Gesetzt' if BACKEND_API_KEY else '❌ Fehlt'}\n"
-        message += f"• Bot Token: ✅ Gesetzt\n"
-        
-        message += f"\nWinter-Proof Edition 2025"
-        
-        keyboard = [
-            [InlineKeyboardButton("📈 Analyse", callback_data="analysis")],
-            [InlineKeyboardButton("🔄 Health Check", callback_data="health_check")]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
+        keyboard = [[InlineKeyboardButton("🎯 Jetzt scannen", callback_data="scan")]]
         
         await update.message.reply_text(
             message,
             parse_mode='HTML',
-            reply_markup=reply_markup
+            reply_markup=InlineKeyboardMarkup(keyboard)
         )
+        return
     
-    except Exception as e:
-        logger.error(f"Fehler in stats_command: {str(e)}")
-        await update.message.reply_text(
-            f"❌ Fehler bei Statistiken: {str(e)}"
-        )
+    # Bets anzeigen (max 10 pro Nachricht)
+    message = f"""
+🎯 <b>VALUE BETS</b>
+📅 {datetime.now().strftime('%d.%m.%Y %H:%M')}
+📊 Gefunden: <b>{count}</b>
 
-async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Hilfe-Befehl"""
-    help_message = f"""
-❓ <b>VALUE EDGE BOT - HILFE</b>
-Version 8.0 (Winter-Proof Edition)
-
-<b>🎯 BEFEHLE:</b>
-
-/start - Startet den Bot
-/scan - Startet Multi-Sport Scan
-/bets - Zeigt Value Bets an
-/bets &lt;sport&gt; - Filter nach Sportart
-/analysis - Detaillierte Analyse
-/sport &lt;name&gt; - Filter nach Sportart
-/stats - System-Statistiken
-/help - Diese Hilfe
-
-<b>🏆 AKTIVE SPORTARTEN (WINTER):</b>
-• 🏀 NBA Basketball (min. 0.5% Edge)
-• 🏒 NHL Eishockey (min. 0.4% Edge)
-• 🎾 Tennis (min. 0.6% Edge)
-• 🏈 NFL Football (min. 0.5% Edge)
-
-<b>💡 TIPPS:</b>
-• Scanne regelmäßig (alle 2-4 Stunden)
-• Überprüfe verschiedene Sportarten
-• Realistische Edge-Erwartungen (0.3-0.6%)
-• Winter-Sportarten sind aktiver
-
-<b>🔧 TECHNISCHE INFO:</b>
-• Backend: {BACKEND_URL}
-• Hosting: Render/Railway
-• Datenbank: Supabase
-• API: The Odds API
-
-<b>⚠️ BEKANNTE PROBLEME:</b>
-• "Kann Analyse nicht laden" → Backend neu starten
-• "0 Value Bets" → Edge-Filter senken
-• Duplikate → Automatisch gefiltert
-
-📅 Letztes Update: 29.12.2025
 """
     
+    for bet in bets[:10]:
+        emoji = SPORT_EMOJIS.get(bet.get('sport', ''), '🎯')
+        edge = bet.get('edge', 0)
+        
+        # Confidence
+        if edge >= 3.0:
+            conf = "🔥"
+        elif edge >= 1.5:
+            conf = "⚡"
+        else:
+            conf = "💡"
+        
+        message += f"{emoji} <b>{bet.get('match', 'N/A')}</b>\n"
+        message += f"   🎯 {bet.get('team', 'N/A')}\n"
+        message += f"   📊 Odds: <b>{bet.get('odds', 'N/A')}</b> @ {bet.get('bookmaker', 'N/A')}\n"
+        message += f"   📈 Edge: <b>{edge:.2f}%</b> {conf}\n"
+        message += f"   🕐 {bet.get('match_time_formatted', 'N/A')}\n\n"
+    
+    if count > 10:
+        message += f"<i>... und {count - 10} weitere</i>\n"
+    
     keyboard = [
-        [InlineKeyboardButton("🎯 Jetzt scannen", callback_data="scan")],
-        [InlineKeyboardButton("📊 Bets anzeigen", callback_data="bets")]
+        [
+            InlineKeyboardButton("🔄 Aktualisieren", callback_data="bets"),
+            InlineKeyboardButton("🎯 Neuer Scan", callback_data="scan")
+        ],
+        [
+            InlineKeyboardButton("🏀 NBA", callback_data="filter_basketball"),
+            InlineKeyboardButton("🏒 NHL", callback_data="filter_icehockey"),
+            InlineKeyboardButton("⚽ Fußball", callback_data="filter_soccer")
+        ]
     ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
     
     await update.message.reply_text(
-        help_message,
+        message,
         parse_mode='HTML',
-        reply_markup=reply_markup,
-        disable_web_page_preview=True
+        reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
-async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handhabt Callback-Queries"""
+async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Stats-Befehl"""
+    
+    # Health Check
+    health = await api_request("/health")
+    
+    # Sport Stats
+    stats = await api_request("/stats/sports")
+    
+    message = f"""
+📊 <b>SYSTEM STATUS</b>
+📅 {datetime.now().strftime('%d.%m.%Y %H:%M')}
+
+<b>🔗 Backend:</b>
+"""
+    
+    if health.get("status") == "healthy":
+        message += "• Status: 🟢 Online\n"
+        message += f"• Datenbank: {health.get('database', 'N/A')}\n"
+        message += f"• Odds API: {health.get('odds_api', 'N/A')}\n"
+    else:
+        message += "• Status: 🔴 Offline\n"
+    
+    message += "\n<b>🎯 Sportarten:</b>\n"
+    
+    if stats.get("success"):
+        for sport in stats.get("sports", []):
+            if sport.get("active"):
+                emoji = sport.get("emoji", "🎯")
+                name = sport.get("display_name", "")
+                weekly = sport.get("weekly_bets", 0)
+                message += f"• {emoji} {name}: {weekly} Bets (7 Tage)\n"
+    
+    message += f"\n<b>⚙️ Einstellungen:</b>\n"
+    message += f"• Min. Edge: 0.2%\n"
+    message += f"• Märkte: H2H, Spreads, Totals\n"
+    message += f"\n🤖 Bot Version: 9.0"
+    
+    keyboard = [
+        [InlineKeyboardButton("🎯 Scan starten", callback_data="scan")],
+        [InlineKeyboardButton("📊 Value Bets", callback_data="bets")]
+    ]
+    
+    await update.message.reply_text(
+        message,
+        parse_mode='HTML',
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
+async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Hilfe-Befehl"""
+    
+    message = """
+❓ <b>VALUEEDGE BOT - HILFE</b>
+
+<b>📋 Befehle:</b>
+/start - Bot starten
+/scan - Multi-Sport Scan starten
+/bets - Value Bets anzeigen
+/bets nba - Nur NBA Bets
+/bets nhl - Nur NHL Bets
+/bets soccer - Nur Fußball Bets
+/stats - Statistiken
+/help - Diese Hilfe
+
+<b>🎯 Was ist ein Value Bet?</b>
+Ein Value Bet liegt vor, wenn ein Bookmaker bessere Odds anbietet als der Marktdurchschnitt.
+
+<b>📊 Edge erklärt:</b>
+• Edge = Vorteil gegenüber Markt
+• 1% Edge = 1% mehr Odds als Durchschnitt
+• Je höher der Edge, desto besser
+
+<b>🔥 Confidence Level:</b>
+• 💡 LOW = 0.2-1.5% Edge
+• ⚡ MEDIUM = 1.5-3% Edge
+• 🔥 HIGH = 3%+ Edge
+
+<b>💡 Tipps:</b>
+• Scanne regelmäßig (alle 2-4h)
+• Setze nicht alles auf einen Bet
+• Tracke deine Ergebnisse
+"""
+    
+    await update.message.reply_text(message, parse_mode='HTML')
+
+# =====================================================
+# CALLBACK HANDLER
+# =====================================================
+async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Verarbeitet Button-Klicks"""
+    
     query = update.callback_query
     await query.answer()
     
     data = query.data
     
+    # Erstelle ein Fake-Message-Objekt für die Command-Handler
+    class FakeMessage:
+        def __init__(self, chat, message_id):
+            self.chat = chat
+            self.chat_id = chat.id
+            self.message_id = message_id
+        
+        async def reply_text(self, text, **kwargs):
+            return await query.message.reply_text(text, **kwargs)
+    
+    # Fake Update mit dem Message-Objekt
+    class FakeUpdate:
+        def __init__(self, message):
+            self.message = message
+    
+    fake_message = FakeMessage(query.message.chat, query.message.message_id)
+    fake_update = FakeUpdate(fake_message)
+    
     if data == "scan":
-        # Simuliere /scan command
+        await query.message.edit_text("🔄 Starte Scan...", parse_mode='HTML')
         context.args = []
-        await scan_command(update, context)
+        await cmd_scan(fake_update, context)
     
     elif data == "bets":
-        # Simuliere /bets command
         context.args = []
-        await bets_command(update, context)
+        await cmd_bets(fake_update, context)
     
-    elif data == "analysis":
-        # Simuliere /analysis command
+    elif data == "stats":
         context.args = []
-        await analysis_command(update, context)
+        await cmd_stats(fake_update, context)
     
-    elif data == "help":
-        # Simuliere /help command
-        context.args = []
-        await help_command(update, context)
-    
-    elif data == "refresh_bets":
-        # Aktualisiere Bets
-        await query.edit_message_text("🔄 Aktualisiere Value Bets...")
-        context.args = []
-        await bets_command(update, context)
-    
-    elif data == "refresh_analysis":
-        # Aktualisiere Analyse
-        await query.edit_message_text("🔄 Aktualisiere Analyse...")
-        context.args = []
-        await analysis_command(update, context)
-    
-    elif data.startswith("sport_"):
-        # Sport Filter
-        sport = data.split("_")[1]
-        sport_names = {
-            "basketball": "basketball",
-            "icehockey": "icehockey",
-            "tennis": "tennis",
-            "americanfootball": "americanfootball"
-        }
-        
-        if sport in sport_names:
-            context.args = [sport_names[sport]]
-            await query.edit_message_text(f"🔍 Filtere nach {sport}...")
-            await bets_command(update, context)
-    
-    elif data == "health_check":
-        # Health Check
-        try:
-            health = await make_backend_request("/health")
-            
-            if health.get("status") == "healthy":
-                status_text = "🟢 BACKEND AKTIV"
-            else:
-                status_text = "🔴 BACKEND FEHLER"
-            
-            await query.edit_message_text(
-                f"🏥 <b>HEALTH CHECK</b>\n\n"
-                f"Status: {status_text}\n"
-                f"Zeit: {datetime.now().strftime('%H:%M:%S')}\n"
-                f"Version: {health.get('version', 'N/A')}\n"
-                f"Datenbank: {health.get('database', 'N/A')}\n"
-                f"Winter-Sportarten: {len(health.get('winter_sports', []))}\n\n"
-                f"✅ Systemprüfung abgeschlossen",
-                parse_mode='HTML'
-            )
-        
-        except Exception as e:
-            await query.edit_message_text(
-                f"❌ Health Check fehlgeschlagen: {str(e)}"
-            )
+    elif data.startswith("filter_"):
+        sport = data.replace("filter_", "")
+        context.args = [sport]
+        await cmd_bets(fake_update, context)
 
+# =====================================================
+# ERROR HANDLER
+# =====================================================
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handhabt Fehler"""
-    logger.error(f"Update {update} caused error {context.error}")
+    """Fehler-Handler"""
+    logger.error(f"Error: {context.error}")
     
     try:
-        await update.message.reply_text(
-            "❌ Ein Fehler ist aufgetreten. Bitte versuche es später erneut.\n"
-            f"Fehler: {str(context.error)[:100]}"
-        )
-    except:
+        if update and update.message:
+            await update.message.reply_text(
+                f"❌ Ein Fehler ist aufgetreten.\n\nDetails: {str(context.error)[:100]}"
+            )
+    except Exception:
         pass
 
+# =====================================================
+# MAIN
+# =====================================================
 def main():
     """Startet den Bot"""
-    # Bot Application erstellen
+    
+    logger.info("🤖 Starte ValueEdge Bot v9.0")
+    logger.info(f"🔗 Backend: {BACKEND_URL}")
+    
+    # Bot erstellen
     application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
     
     # Command Handler
-    application.add_handler(CommandHandler("start", start_command))
-    application.add_handler(CommandHandler("scan", scan_command))
-    application.add_handler(CommandHandler("bets", bets_command))
-    application.add_handler(CommandHandler("analysis", analysis_command))
-    application.add_handler(CommandHandler("sport", sport_command))
-    application.add_handler(CommandHandler("stats", stats_command))
-    application.add_handler(CommandHandler("help", help_command))
+    application.add_handler(CommandHandler("start", cmd_start))
+    application.add_handler(CommandHandler("scan", cmd_scan))
+    application.add_handler(CommandHandler("bets", cmd_bets))
+    application.add_handler(CommandHandler("stats", cmd_stats))
+    application.add_handler(CommandHandler("help", cmd_help))
     
-    # Callback Query Handler
-    application.add_handler(CallbackQueryHandler(button_callback))
+    # Callback Handler
+    application.add_handler(CallbackQueryHandler(handle_callback))
     
     # Error Handler
     application.add_error_handler(error_handler)
     
-    # Starte Bot
-    logger.info("🤖 ValueEdge Bot gestartet (Winter-Proof Edition)")
-    logger.info(f"🎯 Aktive Sportarten: {list(WINTER_SPORTS.keys())}")
-    logger.info(f"🔗 Backend: {BACKEND_URL}")
-    
-    # Polling starten
+    # Starten
+    logger.info("✅ Bot gestartet - warte auf Nachrichten...")
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
